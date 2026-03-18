@@ -1,0 +1,6 @@
+/target
+*.duckdb
+
+# Visual Studio Code / Cursor
+.cursor/
+.vscode/
