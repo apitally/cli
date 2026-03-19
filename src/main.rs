@@ -9,7 +9,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "apitally", about = "Apitally CLI")]
+#[command(name = "apitally", version, about = "Apitally CLI")]
 struct Cli {
     /// API key for authentication
     #[arg(long, global = true, help_heading = "Authentication")]
