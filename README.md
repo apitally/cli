@@ -1,5 +1,8 @@
 # Apitally CLI
 
+[![Tests](https://github.com/apitally/cli/actions/workflows/tests.yaml/badge.svg?event=push)](https://github.com/apitally/cli/actions)
+[![Codecov](https://codecov.io/gh/apitally/cli/graph/badge.svg?token=O3VWKH6DH9)](https://codecov.io/gh/apitally/cli)
+
 A command-line tool for [Apitally](https://apitally.io), built for agents.
 
 ## Authentication
