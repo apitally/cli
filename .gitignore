@@ -1,5 +1,6 @@
 /target
 *.duckdb
+coverage.xml
 
 # Visual Studio Code / Cursor
 .cursor/
