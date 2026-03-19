@@ -5,7 +5,9 @@ on:
       - .gitignore
       - AGENTS.md
       - LICENSE
+      - Makefile
       - README.md
+      - renovate.json
 
 jobs:
   check:
