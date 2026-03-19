@@ -39,3 +39,20 @@ fn check_response(response: &mut Response<Body>) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+pub(crate) mod test_utils {
+    pub fn temp_db() -> (tempfile::TempDir, String) {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("test.db").to_str().unwrap().to_string();
+        (dir, db_path)
+    }
+
+    pub fn parse_ndjson(buf: Vec<u8>) -> Vec<serde_json::Value> {
+        String::from_utf8(buf)
+            .unwrap()
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect()
+    }
+}

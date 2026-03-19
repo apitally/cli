@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
@@ -90,6 +92,7 @@ pub fn run(
     db: Option<&str>,
     api_key: Option<&str>,
     api_base_url: Option<&str>,
+    mut writer: impl Write,
 ) -> Result<()> {
     let api_key = resolve_api_key(api_key)?;
     let api_base_url = resolve_api_base_url(api_base_url);
@@ -116,7 +119,7 @@ pub fn run(
             write_consumers_to_db(conn, app_id, &page.data)?;
         } else {
             for consumer in &page.data {
-                println!("{}", serde_json::to_string(consumer)?);
+                writeln!(writer, "{}", serde_json::to_string(consumer)?)?;
             }
         }
 
@@ -132,4 +135,131 @@ pub fn run(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::open_db;
+    use crate::utils::test_utils::{parse_ndjson, temp_db};
+
+    fn sample_consumers_page1_json() -> &'static str {
+        r#"{
+            "data": [
+                {
+                    "id": 1,
+                    "identifier": "user-1",
+                    "name": "User One",
+                    "group": null,
+                    "created_at": "2025-01-01T00:00:00Z",
+                    "last_request_at": "2025-06-01T12:00:00Z"
+                }
+            ],
+            "has_more": true,
+            "next_token": "token123"
+        }"#
+    }
+
+    fn sample_consumers_page2_json() -> &'static str {
+        r#"{
+            "data": [
+                {
+                    "id": 2,
+                    "identifier": "user-2",
+                    "name": "User Two",
+                    "group": {"id": 1, "name": "Admins"},
+                    "created_at": "2025-02-01T00:00:00Z",
+                    "last_request_at": "2025-06-15T12:00:00Z"
+                }
+            ],
+            "has_more": false,
+            "next_token": null
+        }"#
+    }
+
+    fn mock_consumers_endpoint(
+        server: &mut mockito::Server,
+        app_id: i64,
+    ) -> (mockito::Mock, mockito::Mock) {
+        let path = format!("/v1/apps/{app_id}/consumers");
+        let mock1 = server
+            .mock("GET", path.as_str())
+            .match_query(mockito::Matcher::Any)
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(sample_consumers_page1_json())
+            .create();
+        let mock2 = server
+            .mock("GET", path.as_str())
+            .match_query(mockito::Matcher::UrlEncoded(
+                "next_token".into(),
+                "token123".into(),
+            ))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(sample_consumers_page2_json())
+            .create();
+        (mock1, mock2)
+    }
+
+    #[test]
+    fn test_run_ndjson() {
+        let mut server = mockito::Server::new();
+        let (mock1, mock2) = mock_consumers_endpoint(&mut server, 1);
+
+        let mut buf = Vec::new();
+        run(
+            1,
+            None,
+            None,
+            Some("test-key"),
+            Some(&server.url()),
+            &mut buf,
+        )
+        .unwrap();
+        mock1.assert();
+        mock2.assert();
+
+        let rows = parse_ndjson(buf);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0]["identifier"], "user-1");
+        assert!(rows[0]["group"].is_null());
+        assert_eq!(rows[1]["identifier"], "user-2");
+        assert_eq!(rows[1]["group"]["name"], "Admins");
+    }
+
+    #[test]
+    fn test_run_with_db() {
+        let mut server = mockito::Server::new();
+        let (mock1, mock2) = mock_consumers_endpoint(&mut server, 1);
+        let (_dir, db_path) = temp_db();
+
+        run(
+            1,
+            None,
+            Some(&db_path),
+            Some("test-key"),
+            Some(&server.url()),
+            Vec::new(),
+        )
+        .unwrap();
+        mock1.assert();
+        mock2.assert();
+
+        let conn = open_db(&db_path).unwrap();
+
+        let count: i64 = conn
+            .query_row("SELECT count(*) FROM consumers", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 2);
+
+        let group: Option<String> = conn
+            .query_row(
+                "SELECT \"group\" FROM consumers WHERE consumer_id = 2",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(group.as_deref(), Some("Admins"));
+    }
 }

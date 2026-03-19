@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
@@ -80,7 +82,12 @@ fn write_apps_to_db(conn: &duckdb::Connection, apps: &[AppItem]) -> Result<()> {
     Ok(())
 }
 
-pub fn run(db: Option<&str>, api_key: Option<&str>, api_base_url: Option<&str>) -> Result<()> {
+pub fn run(
+    db: Option<&str>,
+    api_key: Option<&str>,
+    api_base_url: Option<&str>,
+    mut writer: impl Write,
+) -> Result<()> {
     let api_key = resolve_api_key(api_key)?;
     let api_base_url = resolve_api_base_url(api_base_url);
     let apps = fetch_apps(&api_key, &api_base_url)?;
@@ -92,9 +99,104 @@ pub fn run(db: Option<&str>, api_key: Option<&str>, api_base_url: Option<&str>) 
         eprintln!("Wrote {} app(s) to table 'apps' in {db_path}.", apps.len(),);
     } else {
         for app in &apps {
-            println!("{}", serde_json::to_string(app)?);
+            writeln!(writer, "{}", serde_json::to_string(app)?)?;
         }
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::open_db;
+    use crate::utils::test_utils::{parse_ndjson, temp_db};
+
+    fn sample_apps_json() -> &'static str {
+        r#"{
+            "data": [
+                {
+                    "id": 1,
+                    "name": "Test App",
+                    "framework": "FastAPI",
+                    "client_id": "f57e1072-29d6-49be-a917-6eb8a2946832",
+                    "envs": [
+                        {
+                            "id": 10,
+                            "name": "prod",
+                            "created_at": "2025-01-01T00:00:00Z",
+                            "last_sync_at": "2025-06-01T12:00:00Z"
+                        },
+                        {
+                            "id": 11,
+                            "name": "dev",
+                            "created_at": "2025-02-01T00:00:00Z",
+                            "last_sync_at": null
+                        }
+                    ],
+                    "created_at": "2025-01-01T00:00:00Z"
+                }
+            ]
+        }"#
+    }
+
+    fn mock_apps_endpoint(server: &mut mockito::Server) -> mockito::Mock {
+        server
+            .mock("GET", "/v1/apps")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(sample_apps_json())
+            .create()
+    }
+
+    #[test]
+    fn test_run_ndjson() {
+        let mut server = mockito::Server::new();
+        let mock = mock_apps_endpoint(&mut server);
+
+        let mut buf = Vec::new();
+        run(None, Some("test-key"), Some(&server.url()), &mut buf).unwrap();
+        mock.assert();
+
+        let rows = parse_ndjson(buf);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["name"], "Test App");
+        assert_eq!(rows[0]["framework"], "FastAPI");
+        assert_eq!(rows[0]["envs"][0]["name"], "prod");
+        assert!(rows[0]["envs"][1]["last_sync_at"].is_null());
+    }
+
+    #[test]
+    fn test_run_with_db() {
+        let mut server = mockito::Server::new();
+        let mock = mock_apps_endpoint(&mut server);
+        let (_dir, db_path) = temp_db();
+
+        run(
+            Some(&db_path),
+            Some("test-key"),
+            Some(&server.url()),
+            Vec::new(),
+        )
+        .unwrap();
+        mock.assert();
+
+        let conn = open_db(&db_path).unwrap();
+
+        let name: String = conn
+            .query_row("SELECT name FROM apps WHERE app_id = 1", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(name, "Test App");
+
+        let env_count: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM app_envs WHERE app_id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(env_count, 2);
+    }
 }

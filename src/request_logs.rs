@@ -51,6 +51,7 @@ pub fn run(
     db: Option<&str>,
     api_key: Option<&str>,
     api_base_url: Option<&str>,
+    mut writer: impl io::Write,
 ) -> Result<()> {
     let api_key = resolve_api_key(api_key)?;
     let api_base_url = resolve_api_base_url(api_base_url);
@@ -116,9 +117,140 @@ pub fn run(
 
         eprintln!("Wrote {total} request log(s) to table 'request_logs' in {db_path}.",);
     } else {
-        let mut stdout = io::stdout().lock();
-        io::copy(&mut response.into_body().into_reader(), &mut stdout)?;
+        io::copy(&mut response.into_body().into_reader(), &mut writer)?;
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use duckdb::arrow::array::{StringArray, TimestampMicrosecondArray};
+    use duckdb::arrow::datatypes::{DataType, Field, Schema, TimeUnit};
+    use duckdb::arrow::ipc::writer::StreamWriter;
+    use duckdb::arrow::record_batch::RecordBatch;
+
+    use super::*;
+    use crate::utils::open_db;
+    use crate::utils::test_utils::{parse_ndjson, temp_db};
+
+    fn sample_request_logs_ndjson() -> &'static str {
+        "{\"timestamp\":\"2025-01-01T00:00:00Z\",\"request_uuid\":\"abc\",\"method\":\"GET\",\"url\":\"/test\",\"status_code\":200}\n\
+         {\"timestamp\":\"2025-01-01T00:01:00Z\",\"request_uuid\":\"def\",\"method\":\"POST\",\"url\":\"/test2\",\"status_code\":201}\n"
+    }
+
+    fn sample_request_logs_arrow_ipc() -> Vec<u8> {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new(
+                "timestamp",
+                DataType::Timestamp(TimeUnit::Microsecond, None),
+                false,
+            ),
+            Field::new("request_uuid", DataType::Utf8, false),
+            Field::new("method", DataType::Utf8, false),
+            Field::new("url", DataType::Utf8, false),
+        ]));
+        let batch = RecordBatch::try_new(
+            schema.clone(),
+            vec![
+                Arc::new(TimestampMicrosecondArray::from(vec![
+                    1_735_689_600_000_000i64,
+                ])),
+                Arc::new(StringArray::from(vec!["abc-123"])),
+                Arc::new(StringArray::from(vec!["GET"])),
+                Arc::new(StringArray::from(vec!["/test"])),
+            ],
+        )
+        .unwrap();
+
+        let mut buf = Vec::new();
+        let mut writer = StreamWriter::try_new(&mut buf, &schema).unwrap();
+        writer.write(&batch).unwrap();
+        writer.finish().unwrap();
+        buf
+    }
+
+    fn mock_request_logs_endpoint(
+        server: &mut mockito::Server,
+        app_id: i64,
+        body: impl AsRef<[u8]>,
+    ) -> mockito::Mock {
+        server
+            .mock(
+                "POST",
+                format!("/v1/apps/{app_id}/request-logs/stream").as_str(),
+            )
+            .with_status(200)
+            .with_body(body)
+            .create()
+    }
+
+    #[test]
+    fn test_run_ndjson() {
+        let mut server = mockito::Server::new();
+        let mock = mock_request_logs_endpoint(&mut server, 1, sample_request_logs_ndjson());
+
+        let mut buf = Vec::new();
+        run(
+            1,
+            "2025-01-01",
+            Some("2025-01-02"),
+            Some(r#"["method","url","status_code"]"#),
+            Some(r#"{"status_code":200}"#),
+            Some(10),
+            None,
+            Some("test-key"),
+            Some(&server.url()),
+            &mut buf,
+        )
+        .unwrap();
+        mock.assert();
+
+        let rows = parse_ndjson(buf);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0]["method"], "GET");
+        assert_eq!(rows[0]["status_code"], 200);
+        assert_eq!(rows[1]["method"], "POST");
+        assert_eq!(rows[1]["url"], "/test2");
+    }
+
+    #[test]
+    fn test_run_with_db() {
+        let mut server = mockito::Server::new();
+        let mock = mock_request_logs_endpoint(&mut server, 1, sample_request_logs_arrow_ipc());
+        let (_dir, db_path) = temp_db();
+
+        run(
+            1,
+            "2025-01-01",
+            None,
+            None,
+            None,
+            None,
+            Some(&db_path),
+            Some("test-key"),
+            Some(&server.url()),
+            Vec::new(),
+        )
+        .unwrap();
+        mock.assert();
+
+        let conn = open_db(&db_path).unwrap();
+
+        let count: i64 = conn
+            .query_row("SELECT count(*) FROM request_logs", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 1);
+
+        let method: String = conn
+            .query_row(
+                "SELECT method FROM request_logs WHERE app_id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(method, "GET");
+    }
 }

@@ -136,11 +136,17 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Auth => auth::run(cli.api_key, cli.api_base_url),
+        Command::Auth => auth::run(
+            cli.api_key,
+            cli.api_base_url,
+            &auth::auth_file_path()?,
+            &mut std::io::stdin(),
+        ),
         Command::Apps { db } => apps::run(
             db.as_deref(),
             cli.api_key.as_deref(),
             cli.api_base_url.as_deref(),
+            std::io::stdout().lock(),
         ),
         Command::Consumers {
             app_id,
@@ -152,6 +158,7 @@ fn main() -> Result<()> {
             db.as_deref(),
             cli.api_key.as_deref(),
             cli.api_base_url.as_deref(),
+            std::io::stdout().lock(),
         ),
         Command::RequestLogs {
             app_id,
@@ -171,7 +178,8 @@ fn main() -> Result<()> {
             db.as_deref(),
             cli.api_key.as_deref(),
             cli.api_base_url.as_deref(),
+            std::io::stdout().lock(),
         ),
-        Command::Sql { query, db } => sql::run(&query, &db),
+        Command::Sql { query, db } => sql::run(&query, &db, std::io::stdout().lock()),
     }
 }
