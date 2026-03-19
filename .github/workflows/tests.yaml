@@ -1,6 +1,8 @@
 name: Tests
 on:
   push:
+    tags-ignore:
+      - "**"
     paths-ignore:
       - .gitignore
       - AGENTS.md
