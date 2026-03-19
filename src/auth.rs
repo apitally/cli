@@ -50,20 +50,14 @@ fn pick_api_key(
     env_api_key: Option<&str>,
     config: Option<&AuthConfig>,
 ) -> Result<String> {
-    if let Some(key) = cli_api_key.map(str::trim)
-        && !key.is_empty()
-    {
+    if let Some(key) = cli_api_key.map(str::trim).filter(|k| !k.is_empty()) {
         return Ok(key.to_string());
     }
-    if let Some(key) = env_api_key.map(str::trim)
-        && !key.is_empty()
-    {
+    if let Some(key) = env_api_key.map(str::trim).filter(|k| !k.is_empty()) {
         return Ok(key.to_string());
     }
-    if let Some(key) = config.map(|c| c.api_key.trim().to_string())
-        && !key.is_empty()
-    {
-        return Ok(key);
+    if let Some(key) = config.map(|c| c.api_key.trim()).filter(|k| !k.is_empty()) {
+        return Ok(key.to_string());
     }
     bail!(
         "No API key configured.\n\n\
@@ -76,20 +70,16 @@ fn pick_api_base_url(
     env_url: Option<&str>,
     config: Option<&AuthConfig>,
 ) -> String {
-    if let Some(url) = cli_url.map(str::trim)
-        && !url.is_empty()
-    {
+    if let Some(url) = cli_url.map(str::trim).filter(|u| !u.is_empty()) {
         return url.to_string();
     }
-    if let Some(url) = env_url.map(str::trim)
-        && !url.is_empty()
-    {
+    if let Some(url) = env_url.map(str::trim).filter(|u| !u.is_empty()) {
         return url.to_string();
     }
     if let Some(url) = config
         .and_then(|c| c.api_base_url.as_deref())
         .map(str::trim)
-        && !url.is_empty()
+        .filter(|u| !u.is_empty())
     {
         return url.to_string();
     }

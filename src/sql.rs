@@ -6,6 +6,7 @@ use duckdb::arrow::json::writer::{LineDelimited, WriterBuilder};
 
 use crate::utils::open_db;
 
+// Avoid displaying "Caused by: Error code 1: Unknown error code" from duckdb's error chain
 fn map_db_err(e: duckdb::Error) -> anyhow::Error {
     anyhow::anyhow!("{e}")
 }
@@ -33,12 +34,11 @@ pub fn run(query: &str, db: &str, writer: impl Write) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::open_db;
+    use crate::utils::{open_db, test_utils};
     use serde_json::Value;
 
     fn create_test_db() -> (tempfile::TempDir, String) {
-        let dir = tempfile::tempdir().unwrap();
-        let db_path = dir.path().join("test.db").to_str().unwrap().to_string();
+        let (dir, db_path) = test_utils::temp_db();
         let conn = open_db(&db_path).unwrap();
         conn.execute_batch(
             "CREATE TABLE test (id INTEGER, name TEXT);

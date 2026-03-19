@@ -36,7 +36,7 @@ fn fetch_consumers_page(
     requests_since: Option<&str>,
     next_token: Option<&str>,
 ) -> Result<ConsumersResponse> {
-    let url = format!("{}/v1/apps/{}/consumers", api_base_url, app_id);
+    let url = format!("{api_base_url}/v1/apps/{app_id}/consumers");
     let mut query = vec![("limit", "1000")];
     if let Some(since) = requests_since {
         query.push(("requests_since", since));
@@ -119,7 +119,8 @@ pub fn run(
             write_consumers_to_db(conn, app_id, &page.data)?;
         } else {
             for consumer in &page.data {
-                writeln!(writer, "{}", serde_json::to_string(consumer)?)?;
+                serde_json::to_writer(&mut writer, consumer)?;
+                writeln!(writer)?;
             }
         }
 
@@ -220,7 +221,7 @@ mod tests {
         mock1.assert();
         mock2.assert();
 
-        let rows = parse_ndjson(buf);
+        let rows = parse_ndjson(&buf);
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0]["identifier"], "user-1");
         assert!(rows[0]["group"].is_null());

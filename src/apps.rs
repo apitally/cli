@@ -30,7 +30,7 @@ struct AppEnvItem {
 }
 
 fn fetch_apps(api_key: &str, api_base_url: &str) -> Result<Vec<AppItem>> {
-    let url = format!("{}/v1/apps", api_base_url);
+    let url = format!("{api_base_url}/v1/apps");
     let mut response = api_get(&url, api_key, &[])?;
     let apps: AppsResponse = response.body_mut().read_json()?;
     Ok(apps.data)
@@ -99,7 +99,8 @@ pub fn run(
         eprintln!("Wrote {} app(s) to table 'apps' in {db_path}.", apps.len(),);
     } else {
         for app in &apps {
-            writeln!(writer, "{}", serde_json::to_string(app)?)?;
+            serde_json::to_writer(&mut writer, app)?;
+            writeln!(writer)?;
         }
     }
 
@@ -158,7 +159,7 @@ mod tests {
         run(None, Some("test-key"), Some(&server.url()), &mut buf).unwrap();
         mock.assert();
 
-        let rows = parse_ndjson(buf);
+        let rows = parse_ndjson(&buf);
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0]["name"], "Test App");
         assert_eq!(rows[0]["framework"], "FastAPI");

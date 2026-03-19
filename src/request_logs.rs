@@ -1,6 +1,6 @@
 use std::io;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use duckdb::arrow::ipc::reader::StreamReader;
 use duckdb::vtab::arrow::{ArrowVTab, arrow_recordbatch_to_query_params};
 
@@ -55,9 +55,9 @@ pub fn run(
 ) -> Result<()> {
     let api_key = resolve_api_key(api_key)?;
     let api_base_url = resolve_api_base_url(api_base_url);
-    let conn = db.map(open_db).transpose()?;
+    let db = db.map(|p| open_db(p).map(|c| (p, c))).transpose()?;
 
-    let format = if conn.is_some() { "arrow" } else { "ndjson" };
+    let format = if db.is_some() { "arrow" } else { "ndjson" };
     let mut body = serde_json::json!({
         "format": format,
         "since": since,
@@ -66,13 +66,13 @@ pub fn run(
         body["until"] = serde_json::json!(until);
     }
     if let Some(fields) = fields {
-        let fields_value: serde_json::Value = serde_json::from_str(fields)
-            .map_err(|e| anyhow::anyhow!("Invalid JSON for --fields: {e}"))?;
+        let fields_value: serde_json::Value =
+            serde_json::from_str(fields).context("Invalid JSON for --fields")?;
         body["fields"] = fields_value;
     }
     if let Some(filters) = filters {
-        let filters_value: serde_json::Value = serde_json::from_str(filters)
-            .map_err(|e| anyhow::anyhow!("Invalid JSON for --filters: {e}"))?;
+        let filters_value: serde_json::Value =
+            serde_json::from_str(filters).context("Invalid JSON for --filters")?;
         body["filters"] = filters_value;
     }
     if let Some(limit) = limit {
@@ -81,7 +81,7 @@ pub fn run(
     let url = format!("{api_base_url}/v1/apps/{app_id}/request-logs/stream");
     let response = api_post(&url, &api_key, &body)?;
 
-    if let (Some(conn), Some(db_path)) = (&conn, db) {
+    if let Some((db_path, conn)) = &db {
         conn.register_table_function::<ArrowVTab>("arrow")?;
         ensure_request_logs_table(conn)?;
         conn.execute_batch(
@@ -208,7 +208,7 @@ mod tests {
         .unwrap();
         mock.assert();
 
-        let rows = parse_ndjson(buf);
+        let rows = parse_ndjson(&buf);
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0]["method"], "GET");
         assert_eq!(rows[0]["status_code"], 200);

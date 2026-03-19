@@ -48,8 +48,8 @@ pub(crate) mod test_utils {
         (dir, db_path)
     }
 
-    pub fn parse_ndjson(buf: Vec<u8>) -> Vec<serde_json::Value> {
-        String::from_utf8(buf)
+    pub fn parse_ndjson(buf: &[u8]) -> Vec<serde_json::Value> {
+        std::str::from_utf8(buf)
             .unwrap()
             .lines()
             .map(|l| serde_json::from_str(l).unwrap())
