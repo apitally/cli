@@ -1,0 +1,24 @@
+name: Upload installer
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v6
+      - name: Upload install.sh to Spaces
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.SPACES_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.SPACES_SECRET }}
+          AWS_DEFAULT_REGION: sfo3
+        run: |
+          aws s3 cp install.sh s3://apitally-assets/cli/install.sh \
+            --endpoint-url https://sfo3.digitaloceanspaces.com \
+            --content-type text/plain \
+            --acl public-read
