@@ -4,7 +4,7 @@
 # https://github.com/apitally/cli
 #
 # Usage:
-#   curl -fsSL https://cli.apitally.io/install.sh | sh
+#   curl -fsSL https://apitally.io/cli/install.sh | sh
 #
 # Environment variables:
 #   APITALLY_VERSION     - Install a specific version (e.g. "v0.1.0") instead of latest
