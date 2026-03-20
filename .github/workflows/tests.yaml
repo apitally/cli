@@ -1,15 +1,12 @@
 name: Tests
 on:
   push:
-    tags-ignore:
-      - "**"
-    paths-ignore:
-      - .gitignore
-      - AGENTS.md
-      - LICENSE
-      - Makefile
-      - README.md
-      - renovate.json
+    paths:
+      - ".github/workflows/tests.yaml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "src/**"
+  workflow_dispatch:
 
 jobs:
   check:
