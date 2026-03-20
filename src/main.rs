@@ -77,30 +77,28 @@ enum Command {
         ///
         /// Available fields: timestamp, request_uuid, app_env, method, path,
         /// url, consumer_id, request_headers, request_size, request_body,
-        /// status_code, response_time, response_headers, response_size,
-        /// response_body, client_ip, client_country_name,
-        /// client_country_iso_code, exception_type, exception_message,
-        /// exception_stacktrace, sentry_event_id, trace_id.
+        /// status_code, response_time_ms, response_headers, response_size,
+        /// response_body, client_ip, client_country_iso_code, exception_type,
+        /// exception_message, exception_stacktrace, sentry_event_id, trace_id.
         ///
         /// Always included: timestamp, request_uuid, method, url.
         ///
         /// Defaults to all fields except request_headers, request_body,
-        /// response_headers, response_body, exception_type,
-        /// exception_message, exception_stacktrace.
+        /// response_headers, response_body, exception_type, exception_message,
+        /// exception_stacktrace, sentry_event_id, trace_id.
         #[arg(long)]
         fields: Option<String>,
 
         /// JSON array of filter objects with "field", "op", and "value" keys
         ///
-        /// Operators by field type:
-        ///   string fields: eq, neq, in, not_in, like, not_like, ilike,
-        ///     not_ilike
-        ///   int fields: eq, neq, gt, gte, lt, lte, in, not_in
-        ///   float/datetime fields: eq, neq, gt, gte, lt, lte
-        ///   header fields (request_headers, response_headers): eq, neq, in,
-        ///     not_in, like, not_like, ilike, not_ilike, exists, not_exists
+        /// Supported operators:
+        ///   string fields: eq, neq, in, not_in, like, not_like, ilike, not_ilike
+        ///   numeric fields: eq, neq, gt, gte, lt, lte, in, not_in
+        ///   header fields: eq, neq, in, not_in, like, not_like, ilike, not_ilike, exists, not_exists
+        ///   ID fields: eq, neq, in, not_in
         ///
-        /// For header fields, use "key" to specify the header name.
+        /// For "in" and "not_in", "value" must be a JSON array. For header fields,
+        /// use "key" for the header name. For "exists" and "not_exists", omit "value".
         ///
         /// Examples:
         ///   [{"field":"status_code","op":"gte","value":400}]
