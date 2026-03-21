@@ -11,9 +11,9 @@ fn map_db_err(e: duckdb::Error) -> anyhow::Error {
     anyhow::anyhow!("{e}")
 }
 
-pub fn run(query: &str, db: &str, writer: impl Write) -> Result<()> {
-    if !Path::new(db).exists() {
-        bail!("Database file not found: {db}");
+pub fn run(query: &str, db: &Path, writer: impl Write) -> Result<()> {
+    if !db.exists() {
+        bail!("Database file not found: {}", db.display());
     }
 
     let conn = open_db(db)?;
@@ -33,11 +33,13 @@ pub fn run(query: &str, db: &str, writer: impl Write) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
     use crate::utils::{open_db, test_utils};
     use serde_json::Value;
 
-    fn create_test_db() -> (tempfile::TempDir, String) {
+    fn create_test_db() -> (tempfile::TempDir, PathBuf) {
         let (dir, db_path) = test_utils::temp_db();
         let conn = open_db(&db_path).unwrap();
         conn.execute_batch(
@@ -48,7 +50,7 @@ mod tests {
         (dir, db_path)
     }
 
-    fn run_query(query: &str, db: &str) -> anyhow::Result<Vec<Value>> {
+    fn run_query(query: &str, db: &Path) -> anyhow::Result<Vec<Value>> {
         let mut buf = Vec::new();
         run(query, db, &mut buf)?;
         let rows = String::from_utf8(buf)?
@@ -60,7 +62,7 @@ mod tests {
 
     #[test]
     fn test_missing_db() {
-        let err = run("SELECT 1", "/nonexistent/path.db", Vec::new()).unwrap_err();
+        let err = run("SELECT 1", Path::new("/nonexistent/path.db"), Vec::new()).unwrap_err();
         assert!(err.to_string().contains("/nonexistent/path.db"));
     }
 

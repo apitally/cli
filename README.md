@@ -101,7 +101,7 @@ apitally consumers 1 --requests-since "2026-01-01T00:00:00Z"
 Example output (without `--db` flag):
 
 ```json
-{"id":1,"identifier":"bob@example.com","name":"Bob","group":null,"created_at":"2026-01-01T00:00:00Z","last_request_at":"2026-01-01T01:00:00Z"}
+{"id":1,"identifier":"bob@example.com","name":"Bob","group":{"id":1,"name":"Admins"},"created_at":"2026-01-01T00:00:00Z","last_request_at":"2026-01-01T01:00:00Z"}
 {"id":2,"identifier":"alice@example.com","name":"Alice","group":null,"created_at":"2026-01-02T00:00:00Z","last_request_at":"2026-01-02T02:00:00Z"}
 ```
 

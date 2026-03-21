@@ -5,6 +5,8 @@ mod request_logs;
 mod sql;
 mod utils;
 
+use std::path::PathBuf;
+
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
@@ -16,7 +18,7 @@ struct Cli {
     api_key: Option<String>,
 
     /// Base URL for the Apitally API
-    #[arg(long, global = true, help_heading = "Authentication")]
+    #[arg(long, global = true, help_heading = "Authentication", hide = true)]
     api_base_url: Option<String>,
 
     #[command(subcommand)]
@@ -35,7 +37,7 @@ enum Command {
     Apps {
         /// Path to DuckDB database file for storing results
         #[arg(long)]
-        db: Option<String>,
+        db: Option<PathBuf>,
     },
 
     /// List consumers for an app
@@ -52,7 +54,7 @@ enum Command {
 
         /// Path to DuckDB database file for storing results
         #[arg(long)]
-        db: Option<String>,
+        db: Option<PathBuf>,
     },
 
     /// Retrieve request log data for an app
@@ -112,7 +114,7 @@ enum Command {
 
         /// Path to DuckDB database file for storing results
         #[arg(long)]
-        db: Option<String>,
+        db: Option<PathBuf>,
     },
 
     /// Run a SQL query against local DuckDB
@@ -124,7 +126,7 @@ enum Command {
 
         /// Path to DuckDB database file
         #[arg(long)]
-        db: String,
+        db: PathBuf,
     },
 }
 

@@ -1,9 +1,12 @@
+use std::path::Path;
+
 use anyhow::{Context, Result, bail};
 use ureq::Body;
 use ureq::http::Response;
 
-pub fn open_db(path: &str) -> Result<duckdb::Connection> {
-    duckdb::Connection::open(path).with_context(|| format!("Failed to open database {path}"))
+pub fn open_db(path: &Path) -> Result<duckdb::Connection> {
+    duckdb::Connection::open(path)
+        .with_context(|| format!("Failed to open database {}", path.display()))
 }
 
 pub fn api_get(url: &str, api_key: &str, query: &[(&str, &str)]) -> Result<Response<Body>> {
@@ -42,9 +45,11 @@ fn check_response(response: &mut Response<Body>) -> Result<()> {
 
 #[cfg(test)]
 pub(crate) mod test_utils {
-    pub fn temp_db() -> (tempfile::TempDir, String) {
+    use std::path::PathBuf;
+
+    pub fn temp_db() -> (tempfile::TempDir, PathBuf) {
         let dir = tempfile::tempdir().unwrap();
-        let db_path = dir.path().join("test.db").to_str().unwrap().to_string();
+        let db_path = dir.path().join("test.db");
         (dir, db_path)
     }
 

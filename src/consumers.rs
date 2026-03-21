@@ -1,4 +1,5 @@
 use std::io::Write;
+use std::path::Path;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -89,7 +90,7 @@ fn write_consumers_to_db(
 pub fn run(
     app_id: i64,
     requests_since: Option<&str>,
-    db: Option<&str>,
+    db: Option<&Path>,
     api_key: Option<&str>,
     api_base_url: Option<&str>,
     mut writer: impl Write,
@@ -132,7 +133,10 @@ pub fn run(
     }
 
     if let Some(db_path) = db {
-        eprintln!("Wrote {total} consumer(s) to table 'consumers' in {db_path}.");
+        eprintln!(
+            "Wrote {total} consumer(s) to table 'consumers' in {}.",
+            db_path.display(),
+        );
     }
 
     Ok(())

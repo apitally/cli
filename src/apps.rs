@@ -1,4 +1,5 @@
 use std::io::Write;
+use std::path::Path;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -83,7 +84,7 @@ fn write_apps_to_db(conn: &duckdb::Connection, apps: &[AppItem]) -> Result<()> {
 }
 
 pub fn run(
-    db: Option<&str>,
+    db: Option<&Path>,
     api_key: Option<&str>,
     api_base_url: Option<&str>,
     mut writer: impl Write,
@@ -96,7 +97,11 @@ pub fn run(
         let conn = open_db(db_path)?;
         ensure_apps_tables(&conn)?;
         write_apps_to_db(&conn, &apps)?;
-        eprintln!("Wrote {} app(s) to table 'apps' in {db_path}.", apps.len(),);
+        eprintln!(
+            "Wrote {} app(s) to table 'apps' in {}.",
+            apps.len(),
+            db_path.display(),
+        );
     } else {
         for app in &apps {
             serde_json::to_writer(&mut writer, app)?;

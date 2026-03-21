@@ -1,4 +1,5 @@
 use std::io;
+use std::path::Path;
 
 use anyhow::{Context, Result};
 use duckdb::arrow::ipc::reader::StreamReader;
@@ -47,7 +48,7 @@ pub fn run(
     fields: Option<&str>,
     filters: Option<&str>,
     limit: Option<i64>,
-    db: Option<&str>,
+    db: Option<&Path>,
     api_key: Option<&str>,
     api_base_url: Option<&str>,
     mut writer: impl io::Write,
@@ -114,7 +115,10 @@ pub fn run(
              DROP TABLE request_logs_staging;",
         )?;
 
-        eprintln!("Wrote {total} request log(s) to table 'request_logs' in {db_path}.",);
+        eprintln!(
+            "Wrote {total} request log(s) to table 'request_logs' in {}.",
+            db_path.display(),
+        );
     } else {
         io::copy(&mut response.into_body().into_reader(), &mut writer)?;
     }
