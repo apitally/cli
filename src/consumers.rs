@@ -97,14 +97,21 @@ pub fn run(
 ) -> Result<()> {
     let api_key = resolve_api_key(api_key)?;
     let api_base_url = resolve_api_base_url(api_base_url);
-    let conn = db.map(open_db).transpose()?;
+    let db = db.map(|p| open_db(p).map(|c| (p, c))).transpose()?;
 
-    if let Some(conn) = &conn {
+    if let Some((_, conn)) = &db {
         ensure_consumers_table(conn)?;
     }
 
     let mut next_token: Option<String> = None;
     let mut total = 0usize;
+
+    if let Some((db_path, _)) = &db {
+        eprint!(
+            "0 consumers written to table 'consumers' in {}...",
+            db_path.display()
+        );
+    }
 
     loop {
         let page = fetch_consumers_page(
@@ -116,8 +123,12 @@ pub fn run(
         )?;
         total += page.data.len();
 
-        if let Some(conn) = &conn {
+        if let Some((db_path, conn)) = &db {
             write_consumers_to_db(conn, app_id, &page.data)?;
+            eprint!(
+                "\r{total} consumers written to table 'consumers' in {}...",
+                db_path.display()
+            );
         } else {
             for consumer in &page.data {
                 serde_json::to_writer(&mut writer, consumer)?;
@@ -132,11 +143,8 @@ pub fn run(
         }
     }
 
-    if let Some(db_path) = db {
-        eprintln!(
-            "Wrote {total} consumer(s) to table 'consumers' in {}.",
-            db_path.display(),
-        );
+    if db.is_some() {
+        eprintln!("\nDone.");
     }
 
     Ok(())

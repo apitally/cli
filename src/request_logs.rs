@@ -101,12 +101,27 @@ pub fn run(
             "INSERT INTO request_logs_staging (app_id, {col_list}) \
              SELECT {app_id}, {col_list} FROM arrow(?, ?)"
         );
+
+        const CHUNK_SIZE: usize = 2048; // DuckDB's vector size
         let mut total = 0usize;
+
+        eprint!(
+            "0 request logs written to table 'request_logs' in {}...",
+            db_path.display()
+        );
+
         for batch in reader {
             let batch = batch?;
             total += batch.num_rows();
-            let params = arrow_recordbatch_to_query_params(batch);
-            conn.execute(&insert_sql, params)?;
+            for offset in (0..batch.num_rows()).step_by(CHUNK_SIZE) {
+                let chunk = batch.slice(offset, (batch.num_rows() - offset).min(CHUNK_SIZE));
+                let params = arrow_recordbatch_to_query_params(chunk);
+                conn.execute(&insert_sql, params)?;
+            }
+            eprint!(
+                "\r{total} request logs written to table 'request_logs' in {}...",
+                db_path.display()
+            );
         }
 
         conn.execute_batch(
@@ -115,10 +130,7 @@ pub fn run(
              DROP TABLE request_logs_staging;",
         )?;
 
-        eprintln!(
-            "Wrote {total} request log(s) to table 'request_logs' in {}.",
-            db_path.display(),
-        );
+        eprintln!("\nDone.");
     } else {
         io::copy(&mut response.into_body().into_reader(), &mut writer)?;
     }
