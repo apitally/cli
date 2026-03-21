@@ -19,7 +19,7 @@ the 📚 [documentation](https://docs.apitally.io).
 
 ## Installation
 
-Install the CLI with the standalone installer:
+Install the CLI with the standalone installer script:
 
 ```shell
 # On macOS and Linux
@@ -35,7 +35,7 @@ Alternatively, you can download the binary for your platform from the [latest re
 
 ## Authentication
 
-To use the CLI, you will need an API key. You can create one in the [Apitally dashboard](https://app.apitally.io/settings/api-keys) under *Settings → API keys*.
+To use the CLI, you need an API key. You can create one in the [Apitally dashboard](https://app.apitally.io/settings/api-keys) under *Settings → API keys*.
 
 Then run the `auth` command to configure your API key interactively:
 
@@ -59,7 +59,7 @@ Run `apitally --help` to see all commands and options.
 
 ### `apps`
 
-```shell
+```
 apitally apps [--db <path>]
 ```
 
@@ -82,8 +82,8 @@ Example output (without `--db` flag):
 
 ### `consumers`
 
-```shell
-apitally consumers --app-id <app-id> [--requests-since <iso-8601>] [--db <path>]
+```
+apitally consumers --app-id <id> [--requests-since <datetime>] [--db <path>]
 ```
 
 List all consumers for an app. Use this to get consumer details to combine with request log data, which only includes consumer IDs.
@@ -107,8 +107,11 @@ Example output (without `--db` flag):
 
 ### `request-logs`
 
-```shell
-apitally request-logs --app-id <app-id> --since <iso-8601> [--until <iso-8601>] [--fields <json>] [--filters <json>] [--limit <n>] [--db <path>]
+```
+apitally request-logs --app-id <id> \
+  --since <datetime> [--until <datetime>] \
+  [--fields <json>] [--filters <json>] [--limit <n>] \
+  [--db <path>]
 ```
 
 Retrieve request log data for an app.
@@ -123,7 +126,7 @@ Use the `--fields` flag to pass a JSON array of fields to include. If omitted, d
 
 | Field | Type | Default |
 | --- | --- | --- |
-| `timestamp` | datetime | ✅ |
+| `timestamp` | string (datetime) | ✅ |
 | `request_uuid` | string (ID) | ✅ |
 | `app_env` | string | ✅ |
 | `method` | string | ✅ |
@@ -168,8 +171,8 @@ apitally request-logs \
 Example output (without `--db` flag):
 
 ```json
-{"timestamp":"2026-01-01 00:15:00.000","request_uuid":"2fbc1df6-3124-4ed1-a376-7d2c64e4d5cf","app_env":"prod","method":"GET","path":"/test/1","url":"https://api.example.com/test/1","consumer_id":1,"request_size":0,"status_code":404,"response_time_ms":122,"response_size":66,"client_ip":"203.0.113.10","client_country_iso_code":"DE"}
-{"timestamp":"2026-01-01 00:16:00.000","request_uuid":"c6d32f8a-0bc1-43c1-b6c5-7d04363dc97c","app_env":"prod","method":"GET","path":"/test/2","url":"https://api.example.com/test/2","consumer_id":1,"request_size":0,"status_code":500,"response_time_ms":68,"response_size":66,"client_ip":"198.51.100.22","client_country_iso_code":"US"}
+{"timestamp":"2026-01-01T00:15:00.000Z","request_uuid":"2fbc1df6-3124-4ed1-a376-7d2c64e4d5cf","app_env":"prod","method":"GET","path":"/test/1","url":"https://api.example.com/test/1","consumer_id":1,"request_size":0,"status_code":404,"response_time_ms":122,"response_size":66,"client_ip":"203.0.113.10","client_country_iso_code":"DE"}
+{"timestamp":"2026-01-01T00:16:00.000Z","request_uuid":"c6d32f8a-0bc1-43c1-b6c5-7d04363dc97c","app_env":"prod","method":"GET","path":"/test/2","url":"https://api.example.com/test/2","consumer_id":1,"request_size":0,"status_code":500,"response_time_ms":68,"response_size":66,"client_ip":"198.51.100.22","client_country_iso_code":"US"}
 ```
 
 ### `sql`
@@ -180,7 +183,7 @@ apitally sql "<query>" --db <path>
 
 Run a SQL query against a local DuckDB database and output the result as newline-delimited JSON (one object per line).
 
-The database file must already exist. Available tables are `apps`, `app_envs`, `consumers`, and `request_logs`.
+Available tables are `apps`, `app_envs`, `consumers`, and `request_logs`.
 
 DuckDB's [SQL dialect](https://duckdb.org/docs/stable/sql/dialect/overview) closely matches PostgreSQL's semantics.
 
@@ -195,8 +198,8 @@ apitally sql \
 Example output:
 
 ```json
-{"timestamp":"2026-01-01 00:16:00.000","method":"POST","path":"/users","status_code":500}
-{"timestamp":"2026-01-01 00:15:00.000","method":"GET","path":"/users/{userId}","status_code":404}
+{"timestamp":"2026-01-01T00:16:00.000Z","method":"POST","path":"/users","status_code":500}
+{"timestamp":"2026-01-01T00:15:00.000Z","method":"GET","path":"/users/{userId}","status_code":404}
 ```
 
 ## Getting help

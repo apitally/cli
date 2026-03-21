@@ -11,7 +11,7 @@ fn ensure_request_logs_table(conn: &duckdb::Connection) -> Result<()> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS request_logs (
             app_id INTEGER NOT NULL,
-            timestamp TIMESTAMP NOT NULL,
+            timestamp TIMESTAMPTZ NOT NULL,
             request_uuid VARCHAR NOT NULL,
             app_env VARCHAR,
             method VARCHAR NOT NULL,
@@ -126,7 +126,7 @@ pub fn run(
 mod tests {
     use std::sync::Arc;
 
-    use duckdb::arrow::array::{StringArray, TimestampMicrosecondArray};
+    use duckdb::arrow::array::{StringArray, TimestampMillisecondArray};
     use duckdb::arrow::datatypes::{DataType, Field, Schema, TimeUnit};
     use duckdb::arrow::ipc::writer::StreamWriter;
     use duckdb::arrow::record_batch::RecordBatch;
@@ -144,7 +144,7 @@ mod tests {
         let schema = Arc::new(Schema::new(vec![
             Field::new(
                 "timestamp",
-                DataType::Timestamp(TimeUnit::Microsecond, None),
+                DataType::Timestamp(TimeUnit::Millisecond, None),
                 false,
             ),
             Field::new("request_uuid", DataType::Utf8, false),
@@ -154,9 +154,7 @@ mod tests {
         let batch = RecordBatch::try_new(
             schema.clone(),
             vec![
-                Arc::new(TimestampMicrosecondArray::from(vec![
-                    1_735_689_600_000_000i64,
-                ])),
+                Arc::new(TimestampMillisecondArray::from(vec![1_735_689_600_000i64])),
                 Arc::new(StringArray::from(vec!["abc-123"])),
                 Arc::new(StringArray::from(vec!["GET"])),
                 Arc::new(StringArray::from(vec!["/test"])),
