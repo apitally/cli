@@ -44,7 +44,6 @@ enum Command {
     /// With --db, inserts rows into the `consumers` table instead.
     Consumers {
         /// App ID
-        #[arg(long)]
         app_id: i64,
 
         /// Filter to consumers that have made requests since this date/time (ISO 8601)
@@ -62,7 +61,6 @@ enum Command {
     /// With --db, inserts rows into the `request_logs` table instead.
     RequestLogs {
         /// App ID
-        #[arg(long)]
         app_id: i64,
 
         /// Since date/time (ISO 8601)

@@ -83,7 +83,7 @@ Example output (without `--db` flag):
 ### `consumers`
 
 ```
-apitally consumers --app-id <id> [--requests-since <datetime>] [--db <path>]
+apitally consumers <app-id> [--requests-since <datetime>] [--db <path>]
 ```
 
 List all consumers for an app. Use this to get consumer details to combine with request log data, which only includes consumer IDs.
@@ -95,7 +95,7 @@ Outputs newline-delimited JSON (one object per line). If you provide the `--db e
 Example command:
 
 ```shell
-apitally consumers --app-id 1 --requests-since "2026-01-01T00:00:00Z"
+apitally consumers 1 --requests-since "2026-01-01T00:00:00Z"
 ```
 
 Example output (without `--db` flag):
@@ -108,7 +108,7 @@ Example output (without `--db` flag):
 ### `request-logs`
 
 ```
-apitally request-logs --app-id <id> \
+apitally request-logs <app-id> \
   --since <datetime> [--until <datetime>] \
   [--fields <json>] [--filters <json>] [--limit <n>] \
   [--db <path>]
@@ -161,8 +161,7 @@ For `in` and `not_in`, `value` must be a JSON array. For header fields, also pro
 Example command:
 
 ```shell
-apitally request-logs \
-  --app-id 1 \
+apitally request-logs 1 \
   --since "2026-01-01T00:00:00Z" \
   --filters '[{"field":"status_code","op":"gte","value":400}]' \
   --limit 2
