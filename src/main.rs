@@ -5,6 +5,7 @@ mod request_logs;
 mod sql;
 mod utils;
 
+use std::io::Read;
 use std::path::PathBuf;
 
 use anyhow::Result;
@@ -121,8 +122,8 @@ enum Command {
     ///
     /// Available tables: apps, app_envs, consumers, request_logs.
     Sql {
-        /// SQL query to execute
-        query: String,
+        /// SQL query to execute (reads from stdin if omitted)
+        query: Option<String>,
 
         /// Path to DuckDB database file
         #[arg(long)]
@@ -178,6 +179,16 @@ fn main() -> Result<()> {
             cli.api_base_url.as_deref(),
             std::io::stdout().lock(),
         ),
-        Command::Sql { query, db } => sql::run(&query, &db, std::io::stdout().lock()),
+        Command::Sql { query, db } => {
+            let query = match query {
+                Some(q) => q,
+                None => {
+                    let mut buf = String::new();
+                    std::io::stdin().read_to_string(&mut buf)?;
+                    buf
+                }
+            };
+            sql::run(&query, &db, std::io::stdout().lock())
+        }
     }
 }

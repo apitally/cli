@@ -177,21 +177,25 @@ Example output (without `--db` flag):
 ### `sql`
 
 ```shell
-apitally sql "<query>" --db <path>
+apitally sql [<query>] --db <path>
 ```
 
-Run a SQL query against a local DuckDB database and output the result as newline-delimited JSON (one object per line).
+Run a SQL query against a local DuckDB database and output the result as newline-delimited JSON (one object per line). If the query argument is omitted, the query is read from stdin.
 
 Available tables are `apps`, `app_envs`, `consumers`, and `request_logs`.
 
 DuckDB's [SQL dialect](https://duckdb.org/docs/stable/sql/dialect/overview) closely matches PostgreSQL's semantics.
 
-Example command:
+Example commands:
 
 ```shell
 apitally sql \
   "SELECT timestamp, method, path, status_code FROM request_logs WHERE status_code >= 400" \
   --db example.duckdb
+```
+
+```shell
+echo "SELECT COUNT(*) FROM request_logs" | apitally sql --db example.duckdb
 ```
 
 Example output:
