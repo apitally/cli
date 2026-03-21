@@ -135,12 +135,12 @@ Use the `--fields` flag to pass a JSON array of fields to include. If omitted, d
 | `consumer_id` | int (ID) | ✅ |
 | `request_headers` | array of tuples | |
 | `request_size` | int | ✅ |
-| `request_body` | string | |
+| `request_body_json` | string (JSON) | |
 | `status_code` | int | ✅ |
 | `response_time_ms` | int | ✅ |
 | `response_headers` | array of tuples | |
 | `response_size` | int | ✅ |
-| `response_body` | string | |
+| `response_body_json` | string (JSON) | |
 | `client_ip` | string | ✅ |
 | `client_country_iso_code` | string | ✅ |
 | `exception_type` | string | |

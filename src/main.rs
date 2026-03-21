@@ -76,15 +76,15 @@ enum Command {
         /// JSON array of field names to include
         ///
         /// Available fields: timestamp, request_uuid, app_env, method, path,
-        /// url, consumer_id, request_headers, request_size, request_body,
+        /// url, consumer_id, request_headers, request_size, request_body_json,
         /// status_code, response_time_ms, response_headers, response_size,
-        /// response_body, client_ip, client_country_iso_code, exception_type,
+        /// response_body_json, client_ip, client_country_iso_code, exception_type,
         /// exception_message, exception_stacktrace, sentry_event_id, trace_id.
         ///
         /// Always included: timestamp, request_uuid, method, url.
         ///
-        /// Defaults to all fields except request_headers, request_body,
-        /// response_headers, response_body, exception_type, exception_message,
+        /// Defaults to all fields except request_headers, request_body_json,
+        /// response_headers, response_body_json, exception_type, exception_message,
         /// exception_stacktrace, sentry_event_id, trace_id.
         #[arg(long)]
         fields: Option<String>,
