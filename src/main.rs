@@ -14,28 +14,37 @@ use clap::{Parser, Subcommand};
 #[derive(Parser)]
 #[command(name = "apitally", version, about = "Apitally CLI")]
 struct Cli {
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(clap::Args)]
+struct ApiArgs {
     /// API key for authentication
-    #[arg(long, global = true, help_heading = "Authentication")]
+    #[arg(long, help_heading = "Authentication")]
     api_key: Option<String>,
 
     /// Base URL for the Apitally API
-    #[arg(long, global = true, help_heading = "Authentication", hide = true)]
+    #[arg(long, help_heading = "Authentication", hide = true)]
     api_base_url: Option<String>,
-
-    #[command(subcommand)]
-    command: Command,
 }
 
 #[derive(Subcommand)]
 enum Command {
     /// Authenticate with the Apitally API
-    Auth,
+    Auth {
+        #[command(flatten)]
+        api: ApiArgs,
+    },
 
     /// List apps in your team
     ///
     /// Outputs newline-delimited JSON (one object per line).
     /// With --db, inserts rows into the `apps` and `app_envs` tables instead.
     Apps {
+        #[command(flatten)]
+        api: ApiArgs,
+
         /// Path to DuckDB database file for storing results
         #[arg(long)]
         db: Option<PathBuf>,
@@ -46,6 +55,9 @@ enum Command {
     /// Outputs newline-delimited JSON (one object per line).
     /// With --db, inserts rows into the `consumers` table instead.
     Consumers {
+        #[command(flatten)]
+        api: ApiArgs,
+
         /// App ID
         app_id: i64,
 
@@ -63,6 +75,9 @@ enum Command {
     /// Outputs newline-delimited JSON (one object per line).
     /// With --db, inserts rows into the `request_logs` table instead.
     RequestLogs {
+        #[command(flatten)]
+        api: ApiArgs,
+
         /// App ID
         app_id: i64,
 
@@ -135,19 +150,20 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Auth => auth::run(
-            cli.api_key,
-            cli.api_base_url,
+        Command::Auth { api } => auth::run(
+            api.api_key,
+            api.api_base_url,
             &auth::auth_file_path()?,
             &mut std::io::stdin(),
         ),
-        Command::Apps { db } => apps::run(
+        Command::Apps { api, db } => apps::run(
             db.as_deref(),
-            cli.api_key.as_deref(),
-            cli.api_base_url.as_deref(),
+            api.api_key.as_deref(),
+            api.api_base_url.as_deref(),
             std::io::stdout().lock(),
         ),
         Command::Consumers {
+            api,
             app_id,
             requests_since,
             db,
@@ -155,11 +171,12 @@ fn main() -> Result<()> {
             app_id,
             requests_since.as_deref(),
             db.as_deref(),
-            cli.api_key.as_deref(),
-            cli.api_base_url.as_deref(),
+            api.api_key.as_deref(),
+            api.api_base_url.as_deref(),
             std::io::stdout().lock(),
         ),
         Command::RequestLogs {
+            api,
             app_id,
             since,
             until,
@@ -175,8 +192,8 @@ fn main() -> Result<()> {
             filters.as_deref(),
             limit,
             db.as_deref(),
-            cli.api_key.as_deref(),
-            cli.api_base_url.as_deref(),
+            api.api_key.as_deref(),
+            api.api_base_url.as_deref(),
             std::io::stdout().lock(),
         ),
         Command::Sql { query, db } => {
