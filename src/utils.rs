@@ -84,6 +84,40 @@ fn check_response(response: &mut Response<Body>) -> Result<()> {
 }
 
 #[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn resp(status: u16) -> Response<Body> {
+        Response::builder()
+            .status(status)
+            .body(Body::builder().data(""))
+            .unwrap()
+    }
+
+    #[test]
+    fn test_check_response() {
+        assert!(check_response(&mut resp(200)).is_ok());
+
+        for (status, expect_variant) in [
+            (401u16, "Auth"),
+            (403, "Auth"),
+            (400, "Input"),
+            (404, "Input"),
+            (422, "Input"),
+            (500, "Api"),
+        ] {
+            let err = check_response(&mut resp(status)).unwrap_err();
+            let variant = match err.downcast_ref::<CliError>().unwrap() {
+                CliError::Auth(_) => "Auth",
+                CliError::Input(_) => "Input",
+                CliError::Api(_) => "Api",
+            };
+            assert_eq!(variant, expect_variant, "status {status}");
+        }
+    }
+}
+
+#[cfg(test)]
 pub(crate) mod test_utils {
     use std::path::PathBuf;
 
