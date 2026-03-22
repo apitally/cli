@@ -45,15 +45,8 @@ fn save_auth_file(path: &Path, config: &AuthConfig) -> Result<()> {
     Ok(())
 }
 
-fn pick_api_key(
-    cli_api_key: Option<&str>,
-    env_api_key: Option<&str>,
-    config: Option<&AuthConfig>,
-) -> Result<String> {
-    if let Some(key) = cli_api_key.map(str::trim).filter(|k| !k.is_empty()) {
-        return Ok(key.to_string());
-    }
-    if let Some(key) = env_api_key.map(str::trim).filter(|k| !k.is_empty()) {
+fn pick_api_key(api_key: Option<&str>, config: Option<&AuthConfig>) -> Result<String> {
+    if let Some(key) = api_key.map(str::trim).filter(|k| !k.is_empty()) {
         return Ok(key.to_string());
     }
     if let Some(key) = config.map(|c| c.api_key.trim()).filter(|k| !k.is_empty()) {
@@ -65,15 +58,8 @@ fn pick_api_key(
     );
 }
 
-fn pick_api_base_url(
-    cli_url: Option<&str>,
-    env_url: Option<&str>,
-    config: Option<&AuthConfig>,
-) -> String {
-    if let Some(url) = cli_url.map(str::trim).filter(|u| !u.is_empty()) {
-        return url.to_string();
-    }
-    if let Some(url) = env_url.map(str::trim).filter(|u| !u.is_empty()) {
+fn pick_api_base_url(api_base_url: Option<&str>, config: Option<&AuthConfig>) -> String {
+    if let Some(url) = api_base_url.map(str::trim).filter(|u| !u.is_empty()) {
         return url.to_string();
     }
     if let Some(url) = config
@@ -86,20 +72,18 @@ fn pick_api_base_url(
     DEFAULT_API_BASE_URL.to_string()
 }
 
-/// Resolve API key with precedence: --api-key flag > APITALLY_API_KEY env > auth.json
-pub fn resolve_api_key(cli_api_key: Option<&str>) -> Result<String> {
-    let env_key = std::env::var("APITALLY_API_KEY").ok();
+/// Resolve API key with precedence: --api-key flag / APITALLY_API_KEY env (via clap) > auth.json
+pub fn resolve_api_key(api_key: Option<&str>) -> Result<String> {
     let config = load_auth_file(&auth_file_path()?)?;
-    pick_api_key(cli_api_key, env_key.as_deref(), config.as_ref())
+    pick_api_key(api_key, config.as_ref())
 }
 
-/// Resolve API base URL with precedence: --api-base-url flag > APITALLY_API_BASE_URL env > auth.json > default
-pub fn resolve_api_base_url(cli_url: Option<&str>) -> String {
-    let env_url = std::env::var("APITALLY_API_BASE_URL").ok();
+/// Resolve API base URL with precedence: --api-base-url flag / APITALLY_API_BASE_URL env (via clap) > auth.json > default
+pub fn resolve_api_base_url(api_base_url: Option<&str>) -> String {
     let config = auth_file_path()
         .and_then(|p| load_auth_file(&p))
         .unwrap_or(None);
-    pick_api_base_url(cli_url, env_url.as_deref(), config.as_ref())
+    pick_api_base_url(api_base_url, config.as_ref())
 }
 
 pub fn run(
@@ -183,14 +167,10 @@ mod tests {
             api_key: "file-key".into(),
             api_base_url: None,
         };
-        assert!(pick_api_key(None, None, None).is_err());
-        assert_eq!(pick_api_key(None, None, Some(&config)).unwrap(), "file-key");
+        assert!(pick_api_key(None, None).is_err());
+        assert_eq!(pick_api_key(None, Some(&config)).unwrap(), "file-key");
         assert_eq!(
-            pick_api_key(None, Some("env-key"), Some(&config)).unwrap(),
-            "env-key"
-        );
-        assert_eq!(
-            pick_api_key(Some("cli-key"), Some("env-key"), Some(&config)).unwrap(),
+            pick_api_key(Some("cli-key"), Some(&config)).unwrap(),
             "cli-key"
         );
     }
@@ -225,9 +205,9 @@ mod tests {
     #[test]
     fn test_pick_api_base_url() {
         assert_eq!(
-            pick_api_base_url(Some("https://custom.api"), None, None),
+            pick_api_base_url(Some("https://custom.api"), None),
             "https://custom.api"
         );
-        assert_eq!(pick_api_base_url(None, None, None), DEFAULT_API_BASE_URL);
+        assert_eq!(pick_api_base_url(None, None), DEFAULT_API_BASE_URL);
     }
 }

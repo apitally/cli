@@ -21,11 +21,16 @@ struct Cli {
 #[derive(clap::Args)]
 struct ApiArgs {
     /// API key for authentication
-    #[arg(long, help_heading = "Authentication")]
+    #[arg(long, env = "APITALLY_API_KEY", help_heading = "Authentication")]
     api_key: Option<String>,
 
     /// Base URL for the Apitally API
-    #[arg(long, help_heading = "Authentication", hide = true)]
+    #[arg(
+        long,
+        env = "APITALLY_API_BASE_URL",
+        help_heading = "Authentication",
+        hide = true
+    )]
     api_base_url: Option<String>,
 }
 
