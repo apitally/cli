@@ -7,15 +7,6 @@ permissions:
   contents: write
 
 jobs:
-  unset-latest:
-    if: github.event.release.prerelease == false
-    runs-on: ubuntu-latest
-    steps:
-      - name: Unset latest until builds complete
-        run: gh release edit ${{ github.event.release.tag_name }} --latest=false --repo ${{ github.repository }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   approve:
     runs-on: ubuntu-latest
     environment: release
