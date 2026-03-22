@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use ureq::Body;
@@ -43,6 +44,8 @@ pub fn api_get(url: &str, api_key: &str, query: &[(&str, &str)]) -> Result<Respo
         .header("Api-Key", api_key)
         .config()
         .http_status_as_error(false)
+        .timeout_connect(Some(Duration::from_secs(5)))
+        .timeout_recv_response(Some(Duration::from_secs(15)))
         .build();
     for (key, value) in query {
         req = req.query(key, value);
@@ -57,6 +60,8 @@ pub fn api_post(url: &str, api_key: &str, body: &serde_json::Value) -> Result<Re
         .header("Api-Key", api_key)
         .config()
         .http_status_as_error(false)
+        .timeout_connect(Some(Duration::from_secs(5)))
+        .timeout_recv_response(Some(Duration::from_secs(15)))
         .build()
         .send_json(body)
         .map_err(|e| api_err(e.to_string()))?;
