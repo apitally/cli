@@ -5,7 +5,7 @@ mod request_logs;
 mod sql;
 mod utils;
 
-use std::io::Read;
+use std::io::{IsTerminal, Read};
 use std::path::PathBuf;
 
 use anyhow::Result;
@@ -155,12 +155,17 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Auth { api } => auth::run(
-            api.api_key,
-            api.api_base_url,
-            &auth::auth_file_path()?,
-            &mut std::io::stdin(),
-        ),
+        Command::Auth { api } => {
+            if api.api_key.is_none() && !std::io::stdin().is_terminal() {
+                anyhow::bail!("No API key provided. Use --api-key or set APITALLY_API_KEY.");
+            }
+            auth::run(
+                api.api_key,
+                api.api_base_url,
+                &auth::auth_file_path()?,
+                &mut std::io::stdin(),
+            )
+        }
         Command::Apps { api, db } => apps::run(
             db.as_deref(),
             api.api_key.as_deref(),
