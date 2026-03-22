@@ -17,7 +17,7 @@ pub struct AuthConfig {
 }
 
 pub fn auth_file_path() -> Result<PathBuf> {
-    let home = dirs::home_dir().context("Could not determine home directory")?;
+    let home = dirs::home_dir().context("could not determine home directory")?;
     Ok(home.join(".apitally").join("auth.json"))
 }
 
@@ -26,23 +26,23 @@ fn load_auth_file(path: &Path) -> Result<Option<AuthConfig>> {
         return Ok(None);
     }
     let contents =
-        fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
+        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     let config: AuthConfig = serde_json::from_str(&contents)
-        .with_context(|| format!("Failed to parse {}", path.display()))?;
+        .with_context(|| format!("failed to parse {}", path.display()))?;
     Ok(Some(config))
 }
 
 fn save_auth_file(path: &Path, config: &AuthConfig) -> Result<()> {
     if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir).with_context(|| format!("Failed to create {}", dir.display()))?;
+        fs::create_dir_all(dir).with_context(|| format!("failed to create {}", dir.display()))?;
     }
     let json = serde_json::to_string_pretty(config)?;
-    fs::write(path, &json).with_context(|| format!("Failed to write {}", path.display()))?;
+    fs::write(path, &json).with_context(|| format!("failed to write {}", path.display()))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(path, fs::Permissions::from_mode(0o600))
-            .with_context(|| format!("Failed to set permissions on {}", path.display()))?;
+            .with_context(|| format!("failed to set permissions on {}", path.display()))?;
     }
     Ok(())
 }
@@ -55,8 +55,8 @@ fn pick_api_key(api_key: Option<&str>, config: Option<&AuthConfig>) -> Result<St
         return Ok(key.to_string());
     }
     Err(auth_err(
-        "No API key configured.\n\n\
-         Run `apitally auth` to set up authentication, or provide --api-key / APITALLY_API_KEY.",
+        "no API key configured.\n\n\
+         Run `apitally auth` to set up authentication, or provide --api-key / APITALLY_API_KEY",
     ))
 }
 
@@ -118,7 +118,7 @@ fn prompt_api_key(input: &mut impl io::Read) -> Result<String> {
     io::BufReader::new(input).read_line(&mut line)?;
     let key = line.trim().to_string();
     if key.is_empty() {
-        return Err(auth_err("API key cannot be empty."));
+        return Err(auth_err("API key cannot be empty"));
     }
     Ok(key)
 }

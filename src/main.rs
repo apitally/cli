@@ -156,7 +156,11 @@ enum Command {
 fn main() {
     let cli = Cli::parse();
     if let Err(err) = run(cli) {
-        eprintln!("Error: {err:#}");
+        if std::io::stderr().is_terminal() {
+            eprintln!("\x1b[1;31merror:\x1b[0m {err:#}");
+        } else {
+            eprintln!("error: {err:#}");
+        }
         std::process::exit(exit_code(&err));
     }
 }
@@ -179,7 +183,7 @@ fn run(cli: Cli) -> Result<()> {
         Command::Auth { api } => {
             if api.api_key.is_none() && !std::io::stdin().is_terminal() {
                 return Err(utils::auth_err(
-                    "No API key provided. Use --api-key or set APITALLY_API_KEY.",
+                    "no API key provided. Use --api-key or set APITALLY_API_KEY",
                 ));
             }
             auth::run(

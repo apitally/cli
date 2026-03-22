@@ -67,12 +67,12 @@ pub fn run(
     }
     if let Some(fields) = fields {
         let fields_value: serde_json::Value = serde_json::from_str(fields)
-            .map_err(|e| input_err(format!("Invalid JSON for --fields: {e}")))?;
+            .map_err(|e| input_err(format!("invalid JSON for --fields: {e}")))?;
         body["fields"] = fields_value;
     }
     if let Some(filters) = filters {
         let filters_value: serde_json::Value = serde_json::from_str(filters)
-            .map_err(|e| input_err(format!("Invalid JSON for --filters: {e}")))?;
+            .map_err(|e| input_err(format!("invalid JSON for --filters: {e}")))?;
         body["filters"] = filters_value;
     }
     if let Some(limit) = limit {

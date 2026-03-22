@@ -14,7 +14,7 @@ fn map_db_err(e: duckdb::Error) -> anyhow::Error {
 pub fn run(query: &str, db: &Path, writer: impl Write) -> Result<()> {
     if !db.exists() {
         return Err(input_err(format!(
-            "Database file not found: {}",
+            "database file not found: {}",
             db.display()
         )));
     }

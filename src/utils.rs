@@ -35,7 +35,7 @@ pub fn api_err(msg: impl Into<String>) -> anyhow::Error {
 
 pub fn open_db(path: &Path) -> Result<duckdb::Connection> {
     duckdb::Connection::open(path)
-        .with_context(|| format!("Failed to open database {}", path.display()))
+        .with_context(|| format!("failed to open database {}", path.display()))
 }
 
 pub fn api_get(url: &str, api_key: &str, query: &[(&str, &str)]) -> Result<Response<Body>> {
