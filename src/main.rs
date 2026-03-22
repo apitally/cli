@@ -246,3 +246,56 @@ fn run(cli: Cli) -> Result<()> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_exit_code() {
+        // Each CliError variant maps to a specific exit code
+        assert_eq!(exit_code(&utils::auth_err("test")), 3);
+        assert_eq!(exit_code(&utils::input_err("test")), 4);
+        assert_eq!(exit_code(&utils::api_err("test")), 5);
+
+        // Non-CliError falls back to 1
+        assert_eq!(exit_code(&anyhow::anyhow!("generic")), 1);
+    }
+
+    #[test]
+    fn test_cli_parsing() {
+        // Missing required args should fail
+        assert!(Cli::try_parse_from(["apitally"]).is_err()); // missing command
+        assert!(Cli::try_parse_from(["apitally", "consumers"]).is_err()); // missing app_id
+        assert!(Cli::try_parse_from(["apitally", "request-logs", "42"]).is_err()); // missing --since
+        assert!(Cli::try_parse_from(["apitally", "sql"]).is_err()); // missing --db
+
+        // Valid subcommands should parse correctly
+        assert!(matches!(
+            Cli::try_parse_from(["apitally", "auth"]).unwrap().command,
+            Command::Auth { .. }
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["apitally", "apps"]).unwrap().command,
+            Command::Apps { db: None, .. }
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["apitally", "consumers", "42"])
+                .unwrap()
+                .command,
+            Command::Consumers { app_id: 42, .. }
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["apitally", "request-logs", "42", "--since", "2025-01-01"])
+                .unwrap()
+                .command,
+            Command::RequestLogs { app_id: 42, .. }
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["apitally", "sql", "--db", "test.db"])
+                .unwrap()
+                .command,
+            Command::Sql { query: None, .. }
+        ));
+    }
+}
