@@ -1,8 +1,37 @@
 use std::path::Path;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use ureq::Body;
 use ureq::http::Response;
+
+#[derive(Debug)]
+pub enum CliError {
+    Auth(String),
+    Input(String),
+    Api(String),
+}
+
+impl std::fmt::Display for CliError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Auth(msg) | Self::Input(msg) | Self::Api(msg) => f.write_str(msg),
+        }
+    }
+}
+
+impl std::error::Error for CliError {}
+
+pub fn auth_err(msg: impl Into<String>) -> anyhow::Error {
+    CliError::Auth(msg.into()).into()
+}
+
+pub fn input_err(msg: impl Into<String>) -> anyhow::Error {
+    CliError::Input(msg.into()).into()
+}
+
+pub fn api_err(msg: impl Into<String>) -> anyhow::Error {
+    CliError::Api(msg.into()).into()
+}
 
 pub fn open_db(path: &Path) -> Result<duckdb::Connection> {
     duckdb::Connection::open(path)
@@ -18,7 +47,7 @@ pub fn api_get(url: &str, api_key: &str, query: &[(&str, &str)]) -> Result<Respo
     for (key, value) in query {
         req = req.query(key, value);
     }
-    let mut response = req.call()?;
+    let mut response = req.call().map_err(|e| api_err(e.to_string()))?;
     check_response(&mut response)?;
     Ok(response)
 }
@@ -29,7 +58,8 @@ pub fn api_post(url: &str, api_key: &str, body: &serde_json::Value) -> Result<Re
         .config()
         .http_status_as_error(false)
         .build()
-        .send_json(body)?;
+        .send_json(body)
+        .map_err(|e| api_err(e.to_string()))?;
     check_response(&mut response)?;
     Ok(response)
 }
@@ -38,7 +68,12 @@ fn check_response(response: &mut Response<Body>) -> Result<()> {
     let status = response.status().as_u16();
     if status >= 400 {
         let body = response.body_mut().read_to_string().unwrap_or_default();
-        bail!("API returned {status} status:\n{body}");
+        let msg = format!("API returned {status} status:\n{body}");
+        return Err(match status {
+            401 | 403 => auth_err(msg),
+            400 | 404 | 422 => input_err(msg),
+            _ => api_err(msg),
+        });
     }
     Ok(())
 }

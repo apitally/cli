@@ -1,12 +1,12 @@
 use std::io;
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use duckdb::arrow::ipc::reader::StreamReader;
 use duckdb::vtab::arrow::{ArrowVTab, arrow_recordbatch_to_query_params};
 
 use crate::auth::{resolve_api_base_url, resolve_api_key};
-use crate::utils::{api_post, open_db};
+use crate::utils::{api_post, input_err, open_db};
 
 fn ensure_request_logs_table(conn: &duckdb::Connection) -> Result<()> {
     conn.execute_batch(
@@ -66,13 +66,13 @@ pub fn run(
         body["until"] = serde_json::json!(until);
     }
     if let Some(fields) = fields {
-        let fields_value: serde_json::Value =
-            serde_json::from_str(fields).context("Invalid JSON for --fields")?;
+        let fields_value: serde_json::Value = serde_json::from_str(fields)
+            .map_err(|e| input_err(format!("Invalid JSON for --fields: {e}")))?;
         body["fields"] = fields_value;
     }
     if let Some(filters) = filters {
-        let filters_value: serde_json::Value =
-            serde_json::from_str(filters).context("Invalid JSON for --filters")?;
+        let filters_value: serde_json::Value = serde_json::from_str(filters)
+            .map_err(|e| input_err(format!("Invalid JSON for --filters: {e}")))?;
         body["filters"] = filters_value;
     }
     if let Some(limit) = limit {

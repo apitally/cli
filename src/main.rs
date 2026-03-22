@@ -11,6 +11,8 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
+use utils::CliError;
+
 #[derive(Parser)]
 #[command(name = "apitally", version, about = "Apitally CLI")]
 struct Cli {
@@ -151,13 +153,34 @@ enum Command {
     },
 }
 
-fn main() -> Result<()> {
+fn main() {
     let cli = Cli::parse();
+    if let Err(err) = run(cli) {
+        eprintln!("Error: {err:#}");
+        std::process::exit(exit_code(&err));
+    }
+}
 
+fn exit_code(err: &anyhow::Error) -> i32 {
+    for cause in err.chain() {
+        if let Some(cli_err) = cause.downcast_ref::<CliError>() {
+            return match cli_err {
+                CliError::Auth(_) => 3,
+                CliError::Input(_) => 4,
+                CliError::Api(_) => 5,
+            };
+        }
+    }
+    1
+}
+
+fn run(cli: Cli) -> Result<()> {
     match cli.command {
         Command::Auth { api } => {
             if api.api_key.is_none() && !std::io::stdin().is_terminal() {
-                anyhow::bail!("No API key provided. Use --api-key or set APITALLY_API_KEY.");
+                return Err(utils::auth_err(
+                    "No API key provided. Use --api-key or set APITALLY_API_KEY.",
+                ));
             }
             auth::run(
                 api.api_key,

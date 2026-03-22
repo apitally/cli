@@ -35,7 +35,7 @@ Alternatively, you can download the binary for your platform from the [latest re
 
 ## Authentication
 
-To use the CLI, you need an API key. You can create one in the [Apitally dashboard](https://app.apitally.io/settings/api-keys) under *Settings → API keys*.
+To use the CLI, you need an API key. You can create one in the [Apitally dashboard](https://app.apitally.io/settings/api-keys) under _Settings → API keys_.
 
 Then run the `auth` command to configure your API key interactively:
 
@@ -124,30 +124,30 @@ Results are ordered by `timestamp` ascending and capped at 1,000,000 records. Re
 
 Use the `--fields` flag to pass a JSON array of fields to include. If omitted, default fields are returned.
 
-| Field | Type | Default |
-| --- | --- | --- |
-| `timestamp` | string (datetime) | ✅ |
-| `request_uuid` | string (ID) | ✅ |
-| `app_env` | string | ✅ |
-| `method` | string | ✅ |
-| `path` | string | ✅ |
-| `url` | string | ✅ |
-| `consumer_id` | int (ID) | ✅ |
-| `request_headers` | array of tuples | |
-| `request_size` | int | ✅ |
-| `request_body_json` | string (JSON) | |
-| `status_code` | int | ✅ |
-| `response_time_ms` | int | ✅ |
-| `response_headers` | array of tuples | |
-| `response_size` | int | ✅ |
-| `response_body_json` | string (JSON) | |
-| `client_ip` | string | ✅ |
-| `client_country_iso_code` | string | ✅ |
-| `exception_type` | string | |
-| `exception_message` | string | |
-| `exception_stacktrace` | string | |
-| `sentry_event_id` | string (ID) | |
-| `trace_id` | string (ID) | |
+| Field                     | Type              | Default |
+| ------------------------- | ----------------- | ------- |
+| `timestamp`               | string (datetime) | ✅      |
+| `request_uuid`            | string (ID)       | ✅      |
+| `app_env`                 | string            | ✅      |
+| `method`                  | string            | ✅      |
+| `path`                    | string            | ✅      |
+| `url`                     | string            | ✅      |
+| `consumer_id`             | int (ID)          | ✅      |
+| `request_headers`         | array of tuples   |         |
+| `request_size`            | int               | ✅      |
+| `request_body_json`       | string (JSON)     |         |
+| `status_code`             | int               | ✅      |
+| `response_time_ms`        | int               | ✅      |
+| `response_headers`        | array of tuples   |         |
+| `response_size`           | int               | ✅      |
+| `response_body_json`      | string (JSON)     |         |
+| `client_ip`               | string            | ✅      |
+| `client_country_iso_code` | string            | ✅      |
+| `exception_type`          | string            |         |
+| `exception_message`       | string            |         |
+| `exception_stacktrace`    | string            |         |
+| `sentry_event_id`         | string (ID)       |         |
+| `trace_id`                | string (ID)       |         |
 
 Use the `--filters` flag to pass a JSON array of filter objects with `field`, `op`, and `value` keys. Multiple filters are combined with a logical `AND`. Supported operators are:
 
@@ -204,6 +204,17 @@ Example output:
 {"timestamp":"2026-01-01T00:16:00.000Z","method":"POST","path":"/users","status_code":500}
 {"timestamp":"2026-01-01T00:15:00.000Z","method":"GET","path":"/users/{userId}","status_code":404}
 ```
+
+## Exit codes
+
+| Code | Meaning                                                 |
+| ---- | ------------------------------------------------------- |
+| 0    | Success                                                 |
+| 1    | General / unknown error                                 |
+| 2    | Usage error (invalid arguments, missing required flags) |
+| 3    | Authentication error (missing or invalid API key)       |
+| 4    | Input error (invalid argument values)                   |
+| 5    | API / network error                                     |
 
 ## Getting help
 

@@ -2,8 +2,10 @@ use std::fs;
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+
+use crate::utils::auth_err;
 
 const DEFAULT_API_BASE_URL: &str = "https://api.apitally.io";
 
@@ -52,10 +54,10 @@ fn pick_api_key(api_key: Option<&str>, config: Option<&AuthConfig>) -> Result<St
     if let Some(key) = config.map(|c| c.api_key.trim()).filter(|k| !k.is_empty()) {
         return Ok(key.to_string());
     }
-    bail!(
+    Err(auth_err(
         "No API key configured.\n\n\
-         Run `apitally auth` to set up authentication, or provide --api-key / APITALLY_API_KEY."
-    );
+         Run `apitally auth` to set up authentication, or provide --api-key / APITALLY_API_KEY.",
+    ))
 }
 
 fn pick_api_base_url(api_base_url: Option<&str>, config: Option<&AuthConfig>) -> String {
@@ -116,7 +118,7 @@ fn prompt_api_key(input: &mut impl io::Read) -> Result<String> {
     io::BufReader::new(input).read_line(&mut line)?;
     let key = line.trim().to_string();
     if key.is_empty() {
-        bail!("API key cannot be empty.");
+        return Err(auth_err("API key cannot be empty."));
     }
     Ok(key)
 }

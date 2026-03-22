@@ -1,10 +1,10 @@
 use std::io::Write;
 use std::path::Path;
 
-use anyhow::{Result, bail};
+use anyhow::Result;
 use duckdb::arrow::json::writer::{LineDelimited, WriterBuilder};
 
-use crate::utils::open_db;
+use crate::utils::{input_err, open_db};
 
 // Avoid displaying "Caused by: Error code 1: Unknown error code" from duckdb's error chain
 fn map_db_err(e: duckdb::Error) -> anyhow::Error {
@@ -13,7 +13,10 @@ fn map_db_err(e: duckdb::Error) -> anyhow::Error {
 
 pub fn run(query: &str, db: &Path, writer: impl Write) -> Result<()> {
     if !db.exists() {
-        bail!("Database file not found: {}", db.display());
+        return Err(input_err(format!(
+            "Database file not found: {}",
+            db.display()
+        )));
     }
 
     let conn = open_db(db)?;
