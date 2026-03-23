@@ -4,6 +4,7 @@ on:
     types: [published]
 
 permissions:
+  id-token: write
   contents: write
 
 jobs:
@@ -77,3 +78,23 @@ jobs:
         run: gh release edit ${{ github.event.release.tag_name }} --latest --repo ${{ github.repository }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  npm-publish:
+    if: github.event.release.prerelease == false
+    needs: build
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.x
+          registry-url: https://registry.npmjs.org
+      - name: Update version in package.json
+        run: npm version from-git --no-git-tag-version
+        working-directory: npm
+      - name: Publish to npm
+        run: npm publish --access public --provenance
+        working-directory: npm

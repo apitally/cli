@@ -2,6 +2,14 @@
 *.duckdb
 coverage.xml
 
+# npm postinstall binary
+npm/apitally
+npm/apitally.exe
+
 # Visual Studio Code / Cursor
 .cursor/
 .vscode/
+
+# Skills
+.agents/skills/
+skills-lock.json
