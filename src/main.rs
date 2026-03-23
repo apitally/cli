@@ -4,6 +4,7 @@ mod consumers;
 mod request_logs;
 mod sql;
 mod utils;
+mod whoami;
 
 use std::io::{IsTerminal, Read};
 use std::path::PathBuf;
@@ -40,6 +41,12 @@ struct ApiArgs {
 enum Command {
     /// Authenticate with the Apitally API
     Auth {
+        #[command(flatten)]
+        api: ApiArgs,
+    },
+
+    /// Show the authenticated team
+    Whoami {
         #[command(flatten)]
         api: ApiArgs,
     },
@@ -193,6 +200,11 @@ fn run(cli: Cli) -> Result<()> {
                 &mut std::io::stdin(),
             )
         }
+        Command::Whoami { api } => whoami::run(
+            api.api_key.as_deref(),
+            api.api_base_url.as_deref(),
+            std::io::stdout().lock(),
+        ),
         Command::Apps { api, db } => apps::run(
             db.as_deref(),
             api.api_key.as_deref(),
@@ -274,6 +286,10 @@ mod tests {
         assert!(matches!(
             Cli::try_parse_from(["apitally", "auth"]).unwrap().command,
             Command::Auth { .. }
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["apitally", "whoami"]).unwrap().command,
+            Command::Whoami { .. }
         ));
         assert!(matches!(
             Cli::try_parse_from(["apitally", "apps"]).unwrap().command,

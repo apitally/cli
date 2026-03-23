@@ -10,6 +10,7 @@
 src/
   main.rs               Entry point, CLI argument parsing (clap), command dispatch
   auth.rs               Authentication config (load/save/resolve) + auth command
+  whoami.rs             Whoami command (auth check, team info)
   apps.rs               Apps command (fetch, DB write)
   consumers.rs          Consumers command (paginated fetch, DB write)
   request_logs.rs       Request logs command (Arrow IPC or NDJSON streaming)
@@ -35,6 +36,7 @@ npm/
 | Subcommand     | Data source                                  |
 | -------------- | -------------------------------------------- |
 | `auth`         | —                                            |
+| `whoami`       | `GET /v1/team`                               |
 | `apps`         | `GET /v1/apps`                               |
 | `consumers`    | `GET /v1/apps/{app_id}/consumers`            |
 | `request-logs` | `POST /v1/apps/{app_id}/request-logs/stream` |
