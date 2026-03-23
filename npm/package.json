@@ -1,0 +1,23 @@
+{
+  "name": "@apitally/cli",
+  "version": "0.0.0",
+  "description": "Apitally CLI",
+  "author": "Apitally <hello@apitally.io>",
+  "homepage": "https://apitally.io",
+  "repository": "apitally/cli",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "apitally": "cli.js"
+  },
+  "files": [
+    "cli.js",
+    "postinstall.js"
+  ],
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

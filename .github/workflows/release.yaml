@@ -4,17 +4,11 @@ on:
     types: [published]
 
 permissions:
+  id-token: write
   contents: write
 
 jobs:
-  approve:
-    runs-on: ubuntu-latest
-    environment: release
-    steps:
-      - run: echo "Approved"
-
   build:
-    needs: approve
     strategy:
       fail-fast: false
       matrix:
@@ -61,19 +55,46 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: Compress-Archive -Path target/${{ matrix.target }}/release/apitally.exe -DestinationPath apitally-${{ matrix.target }}.zip
-      - name: Upload to release
-        uses: softprops/action-gh-release@v2
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          files: |
+          name: apitally-${{ matrix.target }}
+          path: |
             apitally-*.tar.gz
             apitally-*.zip
+          if-no-files-found: error
 
-  set-latest:
-    if: github.event.release.prerelease == false
+  publish:
     needs: build
     runs-on: ubuntu-latest
+    environment: release
     steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.x
+          registry-url: https://registry.npmjs.org
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Upload artifacts to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+      - name: Copy README
+        run: cp README.md npm/README.md
+      - name: Update version in package.json
+        run: npm version from-git --no-git-tag-version
+        working-directory: npm
+      - name: Publish to npm
+        run: npm publish --access public --provenance ${{ github.event.release.prerelease && '--tag next' || '' }}
+        working-directory: npm
       - name: Set as latest release
+        if: github.event.release.prerelease == false
         run: gh release edit ${{ github.event.release.tag_name }} --latest --repo ${{ github.repository }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
