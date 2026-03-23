@@ -15,7 +15,7 @@
     "postinstall.js"
   ],
   "scripts": {
-    "postinstall": "node postinstall.js"
+    "postinstall": "node install.js"
   },
   "engines": {
     "node": ">=18"

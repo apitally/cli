@@ -11,8 +11,7 @@ const binaryPath = join(__dirname, `apitally${ext}`);
 
 if (!existsSync(binaryPath)) {
   console.error(
-    "apitally binary not found. The postinstall script may not have run.\n" +
-      "Try reinstalling: npm install -g @apitally/cli",
+    "apitally binary not found. Try reinstalling: npm install -g @apitally/cli",
   );
   process.exit(1);
 }
