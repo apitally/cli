@@ -3,6 +3,7 @@
 [![Tests](https://github.com/apitally/cli/actions/workflows/tests.yaml/badge.svg?event=push)](https://github.com/apitally/cli/actions)
 [![Codecov](https://codecov.io/gh/apitally/cli/graph/badge.svg?token=O3VWKH6DH9)](https://codecov.io/gh/apitally/cli)
 [![Release](https://img.shields.io/github/v/release/apitally/cli?color=informational)](https://github.com/apitally/cli/releases/latest)
+[![npm](https://img.shields.io/npm/v/@apitally/cli?logo=npm&color=%23cb0000)](https://www.npmjs.com/package/@apitally/cli)
 
 A command-line interface for Apitally, built for agents.
 
@@ -15,11 +16,17 @@ the 📚 [documentation](https://docs.apitally.io).
 
 - Stream API request logs from Apitally to a local [DuckDB](https://github.com/duckdb/duckdb) database
 - Run arbitrary SQL queries against that database to analyze API request data
-- Single binary with bundled DuckDB, no runtime dependencies, written in Rust (it's fast)
+- Bundled DuckDB, no runtime dependencies, written in Rust (it's fast)
 
 ## Installation
 
-Install the CLI with the standalone installer script:
+The CLI can be used with `npx`, no installation required:
+
+```shell
+npx @apitally/cli <command>
+```
+
+If you wish to install the binary directly, use the standalone installer script:
 
 ```shell
 # On macOS and Linux
@@ -31,7 +38,7 @@ curl -fsSL https://apitally.io/cli/install.sh | sh
 powershell -ExecutionPolicy Bypass -c "irm https://apitally.io/cli/install.ps1 | iex"
 ```
 
-Alternatively, you can download the binary for your platform from the [latest release](https://github.com/apitally/cli/releases/latest) on GitHub.
+You can also download the binary for your platform from the [latest release](https://github.com/apitally/cli/releases/latest) on GitHub.
 
 ## Authentication
 
