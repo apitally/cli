@@ -1,13 +1,13 @@
+import { execSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
   readFileSync,
   unlinkSync,
   writeFileSync,
-} from "fs";
-import { dirname, join } from "path";
-import { execSync } from "child_process";
-import { fileURLToPath } from "url";
+} from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const TARGETS = {
   "darwin-arm64": "aarch64-apple-darwin",

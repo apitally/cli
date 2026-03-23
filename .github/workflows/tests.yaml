@@ -5,6 +5,7 @@ on:
       - ".github/workflows/tests.yaml"
       - "Cargo.lock"
       - "Cargo.toml"
+      - "npm/**"
       - "src/**"
   workflow_dispatch:
 
@@ -21,6 +22,8 @@ jobs:
         run: cargo fmt --check
       - name: Run clippy
         run: cargo clippy --all-targets -- -D warnings
+      - name: Check JavaScript with Biome
+        run: npx -y @biomejs/biome check npm/
 
   test:
     runs-on: ubuntu-latest

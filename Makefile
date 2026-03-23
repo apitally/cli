@@ -8,6 +8,7 @@ install:
 check:
 	cargo fmt --check
 	cargo clippy --all-targets -- -D warnings
+	npx -y @biomejs/biome check npm/
 
 test:
 	cargo test
