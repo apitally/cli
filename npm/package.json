@@ -12,7 +12,7 @@
   },
   "files": [
     "cli.js",
-    "postinstall.js"
+    "install.js"
   ],
   "scripts": {
     "postinstall": "node install.js"
