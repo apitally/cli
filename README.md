@@ -64,6 +64,27 @@ You can also set the API key via the `APITALLY_API_KEY` environment variable or 
 
 Run `apitally --help` to see all commands and options.
 
+### `whoami`
+
+```
+apitally whoami
+```
+
+Check authentication and show the authenticated team.
+
+Example command:
+
+```shell
+apitally whoami
+```
+
+Example output:
+
+<!-- prettier-ignore -->
+```json
+{"team_id":1,"team_name":"My Team"}
+```
+
 ### `apps`
 
 ```
