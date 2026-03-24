@@ -8,8 +8,13 @@ use crate::utils::api_get;
 
 #[derive(Deserialize, Serialize)]
 struct TeamResponse {
-    team_id: i64,
-    team_name: String,
+    id: i64,
+    name: String,
+}
+
+#[derive(Serialize)]
+struct WhoamiResponse {
+    team: TeamResponse,
 }
 
 pub fn run(
@@ -22,7 +27,8 @@ pub fn run(
     let url = format!("{api_base_url}/v1/team");
     let mut response = api_get(&url, &api_key, &[])?;
     let team: TeamResponse = response.body_mut().read_json()?;
-    serde_json::to_writer(&mut writer, &team)?;
+    let output = WhoamiResponse { team };
+    serde_json::to_writer(&mut writer, &output)?;
     writeln!(writer)?;
     Ok(())
 }
@@ -39,7 +45,7 @@ mod tests {
             .mock("GET", "/v1/team")
             .with_status(200)
             .with_header("content-type", "application/json")
-            .with_body(r#"{"team_id":1,"team_name":"Test Team"}"#)
+            .with_body(r#"{"id":1,"name":"Test Team"}"#)
             .create();
 
         let mut buf = Vec::new();
@@ -48,7 +54,7 @@ mod tests {
 
         let rows = parse_ndjson(&buf);
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0]["team_id"], 1);
-        assert_eq!(rows[0]["team_name"], "Test Team");
+        assert_eq!(rows[0]["team"]["id"], 1);
+        assert_eq!(rows[0]["team"]["name"], "Test Team");
     }
 }
