@@ -162,9 +162,9 @@ enum Command {
 
         /// Path to DuckDB database file
         ///
-        /// Defaults to ~/.apitally/data.duckdb if no path is given.
-        #[arg(long, num_args = 0..=1)]
-        db: Option<Option<PathBuf>>,
+        /// Defaults to ~/.apitally/data.duckdb.
+        #[arg(long)]
+        db: Option<PathBuf>,
     },
 }
 
@@ -263,7 +263,7 @@ fn run(cli: Cli) -> Result<()> {
             )
         }
         Command::Sql { query, db } => {
-            let db = utils::resolve_db(db)?.map_or_else(utils::default_db_path, Ok)?;
+            let db = db.map_or_else(utils::default_db_path, Ok)?;
             let query = match query {
                 Some(q) => q,
                 None => {

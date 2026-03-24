@@ -93,7 +93,7 @@ apitally apps [--db [<path>]]
 
 List all apps in your team. Use this to get app IDs for other commands.
 
-Outputs newline-delimited JSON (one object per line). With `--db [<path>]`, data is written to the `apps` table in a DuckDB database instead. Defaults to `~/.apitally/data.duckdb` if no path is given. Existing records will be updated. If the database file doesn't exist, it will be created.
+Outputs newline-delimited JSON (one object per line). With `--db`, data is written to the `apps` table in a DuckDB database instead. Defaults to `~/.apitally/data.duckdb` if no path is given. Existing records will be updated. If the database file doesn't exist, it will be created.
 
 Example command:
 
@@ -118,7 +118,7 @@ List all consumers for an app. Use this to get consumer details to combine with 
 
 Use the `--requests-since` flag to only return consumers that have made requests since a specific date/time (ISO 8601 format).
 
-Outputs newline-delimited JSON (one object per line). With `--db [<path>]`, data is written to the `consumers` table in a DuckDB database instead. Defaults to `~/.apitally/data.duckdb` if no path is given. Existing records will be updated. If the database file doesn't exist, it will be created.
+Outputs newline-delimited JSON (one object per line). With `--db`, data is written to the `consumers` table in a DuckDB database instead. Defaults to `~/.apitally/data.duckdb` if no path is given. Existing records will be updated. If the database file doesn't exist, it will be created.
 
 Example command:
 
@@ -205,10 +205,10 @@ Example output (without `--db` flag):
 ### `sql`
 
 ```shell
-apitally sql [<query>] [--db [<path>]]
+apitally sql [<query>] [--db <path>]
 ```
 
-Run a SQL query against a local DuckDB database and output the result as newline-delimited JSON (one object per line). If the query argument is omitted, the query is read from stdin. Defaults to `~/.apitally/data.duckdb` if `--db` is omitted or given without a path.
+Run a SQL query against a local DuckDB database and output the result as newline-delimited JSON (one object per line). If the query argument is omitted, the query is read from stdin. Defaults to `~/.apitally/data.duckdb` if `--db` is not provided.
 
 Available tables are `apps`, `app_envs`, `consumers`, and `request_logs`.
 
