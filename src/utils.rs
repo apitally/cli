@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -32,6 +32,19 @@ pub fn input_err(msg: impl Into<String>) -> anyhow::Error {
 
 pub fn api_err(msg: impl Into<String>) -> anyhow::Error {
     CliError::Api(msg.into()).into()
+}
+
+pub fn default_db_path() -> Result<PathBuf> {
+    let home = dirs::home_dir().context("could not determine home directory")?;
+    Ok(home.join(".apitally").join("data.duckdb"))
+}
+
+pub fn resolve_db(db: Option<Option<PathBuf>>) -> Result<Option<PathBuf>> {
+    match db {
+        None => Ok(None),
+        Some(Some(p)) => Ok(Some(p)),
+        Some(None) => default_db_path().map(Some),
+    }
 }
 
 pub fn open_db(path: &Path) -> Result<duckdb::Connection> {
@@ -92,6 +105,18 @@ mod tests {
             .status(status)
             .body(Body::builder().data(""))
             .unwrap()
+    }
+
+    #[test]
+    fn test_resolve_db() {
+        assert!(resolve_db(None).unwrap().is_none());
+
+        let p = PathBuf::from("/tmp/my.db");
+        assert_eq!(resolve_db(Some(Some(p.clone()))).unwrap().unwrap(), p);
+
+        let resolved = resolve_db(Some(None)).unwrap().unwrap();
+        assert!(resolved.ends_with("data.duckdb"));
+        assert!(resolved.to_string_lossy().contains(".apitally"));
     }
 
     #[test]

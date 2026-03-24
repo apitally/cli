@@ -59,9 +59,11 @@ enum Command {
         #[command(flatten)]
         api: ApiArgs,
 
-        /// Path to DuckDB database file for storing results
-        #[arg(long)]
-        db: Option<PathBuf>,
+        /// Store results in DuckDB instead of outputting NDJSON
+        ///
+        /// Defaults to ~/.apitally/data.duckdb if no path is given.
+        #[arg(long, num_args = 0..=1)]
+        db: Option<Option<PathBuf>>,
     },
 
     /// List consumers for an app
@@ -79,9 +81,11 @@ enum Command {
         #[arg(long)]
         requests_since: Option<String>,
 
-        /// Path to DuckDB database file for storing results
-        #[arg(long)]
-        db: Option<PathBuf>,
+        /// Store results in DuckDB instead of outputting NDJSON
+        ///
+        /// Defaults to ~/.apitally/data.duckdb if no path is given.
+        #[arg(long, num_args = 0..=1)]
+        db: Option<Option<PathBuf>>,
     },
 
     /// Retrieve request log data for an app
@@ -142,9 +146,11 @@ enum Command {
         #[arg(long)]
         limit: Option<i64>,
 
-        /// Path to DuckDB database file for storing results
-        #[arg(long)]
-        db: Option<PathBuf>,
+        /// Store results in DuckDB instead of outputting NDJSON
+        ///
+        /// Defaults to ~/.apitally/data.duckdb if no path is given.
+        #[arg(long, num_args = 0..=1)]
+        db: Option<Option<PathBuf>>,
     },
 
     /// Run a SQL query against local DuckDB
@@ -155,8 +161,10 @@ enum Command {
         query: Option<String>,
 
         /// Path to DuckDB database file
-        #[arg(long)]
-        db: PathBuf,
+        ///
+        /// Defaults to ~/.apitally/data.duckdb if no path is given.
+        #[arg(long, num_args = 0..=1)]
+        db: Option<Option<PathBuf>>,
     },
 }
 
@@ -205,25 +213,31 @@ fn run(cli: Cli) -> Result<()> {
             api.api_base_url.as_deref(),
             std::io::stdout().lock(),
         ),
-        Command::Apps { api, db } => apps::run(
-            db.as_deref(),
-            api.api_key.as_deref(),
-            api.api_base_url.as_deref(),
-            std::io::stdout().lock(),
-        ),
+        Command::Apps { api, db } => {
+            let db = utils::resolve_db(db)?;
+            apps::run(
+                db.as_deref(),
+                api.api_key.as_deref(),
+                api.api_base_url.as_deref(),
+                std::io::stdout().lock(),
+            )
+        }
         Command::Consumers {
             api,
             app_id,
             requests_since,
             db,
-        } => consumers::run(
-            app_id,
-            requests_since.as_deref(),
-            db.as_deref(),
-            api.api_key.as_deref(),
-            api.api_base_url.as_deref(),
-            std::io::stdout().lock(),
-        ),
+        } => {
+            let db = utils::resolve_db(db)?;
+            consumers::run(
+                app_id,
+                requests_since.as_deref(),
+                db.as_deref(),
+                api.api_key.as_deref(),
+                api.api_base_url.as_deref(),
+                std::io::stdout().lock(),
+            )
+        }
         Command::RequestLogs {
             api,
             app_id,
@@ -233,19 +247,23 @@ fn run(cli: Cli) -> Result<()> {
             filters,
             limit,
             db,
-        } => request_logs::run(
-            app_id,
-            &since,
-            until.as_deref(),
-            fields.as_deref(),
-            filters.as_deref(),
-            limit,
-            db.as_deref(),
-            api.api_key.as_deref(),
-            api.api_base_url.as_deref(),
-            std::io::stdout().lock(),
-        ),
+        } => {
+            let db = utils::resolve_db(db)?;
+            request_logs::run(
+                app_id,
+                &since,
+                until.as_deref(),
+                fields.as_deref(),
+                filters.as_deref(),
+                limit,
+                db.as_deref(),
+                api.api_key.as_deref(),
+                api.api_base_url.as_deref(),
+                std::io::stdout().lock(),
+            )
+        }
         Command::Sql { query, db } => {
+            let db = utils::resolve_db(db)?.map_or_else(utils::default_db_path, Ok)?;
             let query = match query {
                 Some(q) => q,
                 None => {
@@ -280,7 +298,6 @@ mod tests {
         assert!(Cli::try_parse_from(["apitally"]).is_err()); // missing command
         assert!(Cli::try_parse_from(["apitally", "consumers"]).is_err()); // missing app_id
         assert!(Cli::try_parse_from(["apitally", "request-logs", "42"]).is_err()); // missing --since
-        assert!(Cli::try_parse_from(["apitally", "sql"]).is_err()); // missing --db
 
         // Valid subcommands should parse correctly
         assert!(matches!(
@@ -312,6 +329,20 @@ mod tests {
                 .unwrap()
                 .command,
             Command::Sql { query: None, .. }
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["apitally", "sql", "SELECT 1"])
+                .unwrap()
+                .command,
+            Command::Sql { db: None, .. }
+        ));
+
+        // --db without a value should parse to Some(None)
+        assert!(matches!(
+            Cli::try_parse_from(["apitally", "apps", "--db"])
+                .unwrap()
+                .command,
+            Command::Apps { db: Some(None), .. }
         ));
     }
 }

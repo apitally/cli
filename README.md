@@ -88,12 +88,12 @@ Example output:
 ### `apps`
 
 ```
-apitally apps [--db <path>]
+apitally apps [--db [<path>]]
 ```
 
 List all apps in your team. Use this to get app IDs for other commands.
 
-Outputs newline-delimited JSON (one object per line). If you provide the `--db example.duckdb` flag, data is written to the `apps` table in the provided database instead. Existing records will be updated. If the database file doesn't exist, it will be created.
+Outputs newline-delimited JSON (one object per line). With `--db [<path>]`, data is written to the `apps` table in a DuckDB database instead. Defaults to `~/.apitally/data.duckdb` if no path is given. Existing records will be updated. If the database file doesn't exist, it will be created.
 
 Example command:
 
@@ -111,14 +111,14 @@ Example output (without `--db` flag):
 ### `consumers`
 
 ```
-apitally consumers <app-id> [--requests-since <datetime>] [--db <path>]
+apitally consumers <app-id> [--requests-since <datetime>] [--db [<path>]]
 ```
 
 List all consumers for an app. Use this to get consumer details to combine with request log data, which only includes consumer IDs.
 
 Use the `--requests-since` flag to only return consumers that have made requests since a specific date/time (ISO 8601 format).
 
-Outputs newline-delimited JSON (one object per line). If you provide the `--db example.duckdb` flag, data is written to the `consumers` table in the provided database instead. Existing records will be updated. If the database file doesn't exist, it will be created.
+Outputs newline-delimited JSON (one object per line). With `--db [<path>]`, data is written to the `consumers` table in a DuckDB database instead. Defaults to `~/.apitally/data.duckdb` if no path is given. Existing records will be updated. If the database file doesn't exist, it will be created.
 
 Example command:
 
@@ -139,14 +139,14 @@ Example output (without `--db` flag):
 apitally request-logs <app-id> \
   --since <datetime> [--until <datetime>] \
   [--fields <json>] [--filters <json>] [--limit <n>] \
-  [--db <path>]
+  [--db [<path>]]
 ```
 
 Retrieve request log data for an app.
 
 The time range is `--since` inclusive and `--until` exclusive. If `--until` is not provided, it defaults to now. If a timestamp does not include a timezone, UTC is assumed.
 
-Outputs newline-delimited JSON (one object per line). If you provide the `--db example.duckdb` flag, data is written to the `request_logs` table in the provided database instead. Existing records will be updated. If the database file doesn't exist, it will be created.
+Outputs newline-delimited JSON (one object per line). With `--db`, data is written to the `request_logs` table in a DuckDB database instead. Defaults to `~/.apitally/data.duckdb` if no path is given. Existing records will be updated. If the database file doesn't exist, it will be created.
 
 Results are ordered by `timestamp` ascending and capped at 1,000,000 records. Requests to endpoints marked as excluded in the Apitally dashboard are not returned.
 
@@ -205,10 +205,10 @@ Example output (without `--db` flag):
 ### `sql`
 
 ```shell
-apitally sql [<query>] --db <path>
+apitally sql [<query>] [--db [<path>]]
 ```
 
-Run a SQL query against a local DuckDB database and output the result as newline-delimited JSON (one object per line). If the query argument is omitted, the query is read from stdin.
+Run a SQL query against a local DuckDB database and output the result as newline-delimited JSON (one object per line). If the query argument is omitted, the query is read from stdin. Defaults to `~/.apitally/data.duckdb` if `--db` is omitted or given without a path.
 
 Available tables are `apps`, `app_envs`, `consumers`, and `request_logs`.
 
@@ -217,13 +217,11 @@ DuckDB's [SQL dialect](https://duckdb.org/docs/stable/sql/dialect/overview) clos
 Example commands:
 
 ```shell
-apitally sql \
-  "SELECT timestamp, method, path, status_code FROM request_logs WHERE status_code >= 400" \
-  --db example.duckdb
+apitally sql "SELECT timestamp, method, path, status_code FROM request_logs WHERE status_code >= 400"
 ```
 
 ```shell
-echo "SELECT COUNT(*) FROM request_logs" | apitally sql --db example.duckdb
+echo "SELECT COUNT(*) FROM request_logs" | apitally sql
 ```
 
 Example output:
