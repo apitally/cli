@@ -82,7 +82,7 @@ Example output:
 
 <!-- prettier-ignore -->
 ```json
-{"team_id":1,"team_name":"My Team"}
+{"team":{"id":1,"name":"My Team"}}
 ```
 
 ### `apps`
