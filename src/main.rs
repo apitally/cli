@@ -109,9 +109,9 @@ enum Command {
 
         /// JSON array of field names to include
         ///
-        /// Available fields: timestamp, request_uuid, app_env, method, path,
-        /// url, consumer_id, request_headers, request_size, request_body_json,
-        /// status_code, response_time_ms, response_headers, response_size,
+        /// Available fields: timestamp, request_uuid, env, method, path,
+        /// url, consumer_id, request_headers, request_size_bytes, request_body_json,
+        /// status_code, response_time_ms, response_headers, response_size_bytes,
         /// response_body_json, client_ip, client_country_iso_code, exception_type,
         /// exception_message, exception_stacktrace, sentry_event_id, trace_id.
         ///
