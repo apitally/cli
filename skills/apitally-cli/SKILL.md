@@ -189,11 +189,11 @@ ORDER BY count DESC
 
 ### Query headers
 
-Headers are stored as arrays of `STRUCT("1" VARCHAR, "2" VARCHAR)` (name-value tuples). Use DuckDB list comprehensions:
+Headers are stored as arrays of `STRUCT(name VARCHAR, value VARCHAR)`. Use DuckDB list comprehensions:
 
 ```sql
 SELECT timestamp, method, path,
-       [s."2" FOR s IN request_headers IF lower(s."1") = 'content-type'][1] as content_type
+       [s.value FOR s IN request_headers IF lower(s.name) = 'content-type'][1] as content_type
 FROM request_logs
 WHERE request_headers IS NOT NULL
 LIMIT 20

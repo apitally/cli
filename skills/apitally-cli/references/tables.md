@@ -56,12 +56,12 @@ CREATE TABLE request_logs (
     path                    VARCHAR,
     url                     VARCHAR NOT NULL,
     consumer_id             INTEGER,
-    request_headers         STRUCT("1" VARCHAR, "2" VARCHAR)[],
+    request_headers         STRUCT(name VARCHAR, value VARCHAR)[],
     request_size_bytes      BIGINT,
     request_body_json       JSON,
     status_code             INTEGER,
     response_time_ms        INTEGER,
-    response_headers        STRUCT("1" VARCHAR, "2" VARCHAR)[],
+    response_headers        STRUCT(name VARCHAR, value VARCHAR)[],
     response_size_bytes     BIGINT,
     response_body_json      JSON,
     client_ip               VARCHAR,
@@ -86,16 +86,16 @@ Columns are only populated if the corresponding field was included in the `--fie
 
 ## Special Types
 
-### Headers (`STRUCT("1" VARCHAR, "2" VARCHAR)[]`)
+### Headers (`STRUCT(name VARCHAR, value VARCHAR)[]`)
 
-Headers are arrays of structs where `"1"` is the header name and `"2"` is the header value. Use DuckDB list comprehensions:
+Headers are arrays of structs with `name` and `value` fields. Use DuckDB list comprehensions:
 
 ```sql
 -- Extract a specific header value
-[s."2" FOR s IN request_headers IF lower(s."1") = 'content-type'][1]
+[s.value FOR s IN request_headers IF lower(s.name) = 'content-type'][1]
 
 -- Check if a header exists
-len([s FOR s IN request_headers IF lower(s."1") = 'authorization']) > 0
+len([s FOR s IN request_headers IF lower(s.name) = 'authorization']) > 0
 ```
 
 ### JSON body fields (`JSON`)

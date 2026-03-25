@@ -8,7 +8,7 @@ use duckdb::vtab::arrow::{ArrowVTab, arrow_recordbatch_to_query_params};
 use crate::auth::{resolve_api_base_url, resolve_api_key};
 use crate::utils::{api_post, input_err, open_db};
 
-fn ensure_request_logs_table(conn: &duckdb::Connection) -> Result<()> {
+pub(crate) fn ensure_request_logs_table(conn: &duckdb::Connection) -> Result<()> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS request_logs (
             app_id INTEGER NOT NULL,
@@ -19,12 +19,12 @@ fn ensure_request_logs_table(conn: &duckdb::Connection) -> Result<()> {
             path VARCHAR,
             url VARCHAR NOT NULL,
             consumer_id INTEGER,
-            request_headers STRUCT(\"1\" VARCHAR, \"2\" VARCHAR)[],
+            request_headers STRUCT(name VARCHAR, value VARCHAR)[],
             request_size_bytes BIGINT,
             request_body_json JSON,
             status_code INTEGER,
             response_time_ms INTEGER,
-            response_headers STRUCT(\"1\" VARCHAR, \"2\" VARCHAR)[],
+            response_headers STRUCT(name VARCHAR, value VARCHAR)[],
             response_size_bytes BIGINT,
             response_body_json JSON,
             client_ip VARCHAR,
@@ -84,9 +84,15 @@ pub fn run(
     if let Some((db_path, conn)) = &db {
         conn.register_table_function::<ArrowVTab>("arrow")?;
         ensure_request_logs_table(conn)?;
+
+        // Arrow IPC serializes header tuples as structs with fields "1" and "2",
+        // so the staging table must use those names to accept the Arrow data.
+        // The final INSERT into request_logs renames them to "name" and "value".
         conn.execute_batch(
             "CREATE TEMPORARY TABLE request_logs_staging AS \
-             SELECT * FROM request_logs LIMIT 0",
+             SELECT * EXCLUDE (request_headers, response_headers) FROM request_logs LIMIT 0; \
+             ALTER TABLE request_logs_staging ADD COLUMN request_headers STRUCT(\"1\" VARCHAR, \"2\" VARCHAR)[]; \
+             ALTER TABLE request_logs_staging ADD COLUMN response_headers STRUCT(\"1\" VARCHAR, \"2\" VARCHAR)[];",
         )?;
 
         let reader = StreamReader::try_new(response.into_body().into_reader(), None)?;
@@ -125,8 +131,11 @@ pub fn run(
         }
 
         conn.execute_batch(
-            "INSERT OR REPLACE INTO request_logs \
-             SELECT * FROM request_logs_staging; \
+            "INSERT OR REPLACE INTO request_logs BY NAME \
+             SELECT * REPLACE (\
+                 [{'name': s.\"1\", 'value': s.\"2\"} FOR s IN request_headers] AS request_headers, \
+                 [{'name': s.\"1\", 'value': s.\"2\"} FOR s IN response_headers] AS response_headers \
+             ) FROM request_logs_staging; \
              DROP TABLE request_logs_staging;",
         )?;
 
@@ -142,8 +151,8 @@ pub fn run(
 mod tests {
     use std::sync::Arc;
 
-    use duckdb::arrow::array::{StringArray, TimestampMillisecondArray};
-    use duckdb::arrow::datatypes::{DataType, Field, Schema, TimeUnit};
+    use duckdb::arrow::array::{ListArray, StringArray, StructArray, TimestampMillisecondArray};
+    use duckdb::arrow::datatypes::{DataType, Field, Fields, Schema, TimeUnit};
     use duckdb::arrow::ipc::writer::StreamWriter;
     use duckdb::arrow::record_batch::RecordBatch;
 
@@ -152,28 +161,56 @@ mod tests {
     use crate::utils::test_utils::{parse_ndjson, temp_db};
 
     fn sample_request_logs_ndjson() -> &'static str {
-        "{\"timestamp\":\"2025-01-01T00:00:00Z\",\"request_uuid\":\"abc\",\"method\":\"GET\",\"url\":\"/test\",\"status_code\":200}\n\
-         {\"timestamp\":\"2025-01-01T00:01:00Z\",\"request_uuid\":\"def\",\"method\":\"POST\",\"url\":\"/test2\",\"status_code\":201}\n"
+        "{\"timestamp\":\"2025-01-01T00:00:00Z\",\"request_uuid\":\"abc\",\"method\":\"GET\",\"url\":\"https://api.example.com/test\",\"status_code\":200}\n\
+         {\"timestamp\":\"2025-01-01T00:01:00Z\",\"request_uuid\":\"def\",\"method\":\"POST\",\"url\":\"https://api.example.com/test2\",\"status_code\":201}\n"
     }
 
     fn sample_request_logs_arrow_ipc() -> Vec<u8> {
+        let header_fields = Fields::from(vec![
+            Field::new("1", DataType::Utf8, false),
+            Field::new("2", DataType::Utf8, false),
+        ]);
+        let header_struct_type = DataType::Struct(header_fields.clone());
+        let headers_list_type =
+            DataType::List(Arc::new(Field::new_list_field(header_struct_type, true)));
         let schema = Arc::new(Schema::new(vec![
             Field::new(
                 "timestamp",
-                DataType::Timestamp(TimeUnit::Millisecond, None),
+                DataType::Timestamp(TimeUnit::Millisecond, Some("UTC".into())),
                 false,
             ),
             Field::new("request_uuid", DataType::Utf8, false),
             Field::new("method", DataType::Utf8, false),
             Field::new("url", DataType::Utf8, false),
+            Field::new("request_headers", headers_list_type.clone(), true),
         ]));
+        let headers_struct = StructArray::from(vec![
+            (
+                Arc::new(Field::new("1", DataType::Utf8, false)),
+                Arc::new(StringArray::from(vec!["content-type"])) as _,
+            ),
+            (
+                Arc::new(Field::new("2", DataType::Utf8, false)),
+                Arc::new(StringArray::from(vec!["application/json"])) as _,
+            ),
+        ]);
+        let headers_list = ListArray::new(
+            Arc::new(Field::new_list_field(DataType::Struct(header_fields), true)),
+            duckdb::arrow::buffer::OffsetBuffer::from_lengths([1]),
+            Arc::new(headers_struct),
+            None,
+        );
         let batch = RecordBatch::try_new(
             schema.clone(),
             vec![
-                Arc::new(TimestampMillisecondArray::from(vec![1_735_689_600_000i64])),
+                Arc::new(
+                    TimestampMillisecondArray::from(vec![1_735_689_600_000i64])
+                        .with_timezone("UTC"),
+                ),
                 Arc::new(StringArray::from(vec!["abc-123"])),
                 Arc::new(StringArray::from(vec!["GET"])),
-                Arc::new(StringArray::from(vec!["/test"])),
+                Arc::new(StringArray::from(vec!["https://api.example.com/test"])),
+                Arc::new(headers_list),
             ],
         )
         .unwrap();
@@ -226,7 +263,7 @@ mod tests {
         assert_eq!(rows[0]["method"], "GET");
         assert_eq!(rows[0]["status_code"], 200);
         assert_eq!(rows[1]["method"], "POST");
-        assert_eq!(rows[1]["url"], "/test2");
+        assert_eq!(rows[1]["url"], "https://api.example.com/test2");
     }
 
     #[test]
@@ -257,13 +294,14 @@ mod tests {
             .unwrap();
         assert_eq!(count, 1);
 
-        let method: String = conn
+        let (url, header_name): (String, Option<String>) = conn
             .query_row(
-                "SELECT method FROM request_logs WHERE app_id = 1",
+                "SELECT url, request_headers[1].name FROM request_logs WHERE app_id = 1",
                 [],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .unwrap();
-        assert_eq!(method, "GET");
+        assert_eq!(url, "https://api.example.com/test");
+        assert_eq!(header_name.as_deref(), Some("content-type"));
     }
 }
