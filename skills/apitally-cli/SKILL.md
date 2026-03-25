@@ -40,22 +40,24 @@ A team-scoped API key is required to use the CLI. The `auth` command writes the 
    npx @apitally/cli consumers <app-id> --db
    ```
 
-   For scenario (a), query to find the consumer ID:
+   For scenario (a), query to find the consumer IDs:
 
    ```
-   npx @apitally/cli sql "SELECT consumer_id, identifier, name, \"group\" FROM consumers WHERE identifier ILIKE 'user@example.com'" --db
+   npx @apitally/cli sql "SELECT consumer_id, identifier, name, \"group\" FROM consumers WHERE identifier ILIKE '%@example.com'"
    ```
 
-5. **Fetch request logs** into DuckDB with time range, fields and filters tailored to the investigation:
+5. **Fetch request logs** into DuckDB with time range, fields, and filters tailored to the investigation:
 
    ```
    npx @apitally/cli request-logs <app-id> --since "2026-03-23T00:00:00Z" \
-     --fields '["timestamp","method","path","status_code","response_time_ms","consumer_id","request_headers","request_body_json","response_body_json","exception_type","exception_message","exception_stacktrace"]' \
+     --fields '["timestamp","method","path","url","status_code","consumer_id"]' \
      --filters '[{"field":"status_code","op":"gte","value":400}]' \
      --db
    ```
 
-   For scenario (a), add a `consumer_id` filter: `[{"field":"consumer_id","op":"in","value":[1,2,3]}]`
+   For scenario (a), add a consumer filter: `{"field":"consumer_id","op":"in","value":[1,2,3]}`
+
+   Narrow down fields and use filters as much as possible to avoid fetching unnecessarily large volumes of data. Refetching data later (e.g. with more fields) replaces existing records in DuckDB and does not create duplicates.
 
 6. **Query with SQL**:
 
@@ -65,8 +67,6 @@ A team-scoped API key is required to use the CLI. The `auth` command writes the 
 
 7. **Iterate** -- refine filters, fetch additional fields (headers, bodies, exceptions), or widen the time range as needed
 
-Use `--filters` and `--fields` to narrow data at fetch time as much as possible to avoid fetching unnecessary data. Refetching data replaces existing records in DuckDB and does not create duplicates.
-
 ## Command Quick Reference
 
 All commands are run via `npx @apitally/cli <command>`. For full details, see [references/commands.md](references/commands.md).
@@ -74,7 +74,7 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
 - `auth [--api-key <key>]` -- configure API key
 - `whoami` -- check auth, show team
 - `apps [--db [<path>]]` -- list apps (get app IDs)
-- `consumers <app-id> [--db [<path>]]` -- list consumers for an app
+- `consumers <app-id> [--requests-since <dt>] [--db [<path>]]` -- list consumers for an app
 - `request-logs <app-id> --since <dt> [--until <dt>] [--fields <json>] [--filters <json>] [--limit <n>] [--db [<path>]]` -- fetch request logs (max 1,000,000 rows at once)
 - `sql "<query>" [--db <path>]` -- run SQL against local DuckDB
 

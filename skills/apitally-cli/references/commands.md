@@ -143,7 +143,8 @@ All fields can be used in filters. Available operators depend on the field type:
 
 ```json
 [{"field": "consumer_id", "op": "eq", "value": 42}]
-[{"field": "path", "op": "ilike", "value": "/users/%"}]
+[{"field": "path", "op": "eq", "value": "/v1/users/{user_id}"}]
+[{"field": "url", "op": "ilike", "value": "%/users/123%"}]
 [{"field": "status_code", "op": "gte", "value": 400},{"field": "status_code", "op": "lt", "value": 500}]
 [{"field": "request_headers", "key": "x-api-version", "op": "exists"}]
 [{"field": "request_headers", "key": "content-type", "op": "eq", "value": "application/json"}]
