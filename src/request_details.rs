@@ -16,7 +16,6 @@ struct RequestDetailsResponse {
     method: String,
     path: Option<String>,
     url: String,
-    consumer: Option<String>,
     request_headers: Vec<(String, String)>,
     request_size_bytes: i64,
     request_body_json: Option<String>,
@@ -360,7 +359,6 @@ mod tests {
         let output: serde_json::Value = serde_json::from_slice(&buf).unwrap();
         assert_eq!(output["method"], "GET");
         assert_eq!(output["status_code"], 200);
-        assert_eq!(output["consumer"], "user-1");
         assert_eq!(output["trace_id"], "0000000000000000aaaaaaaaaaaaaaaa");
         assert_eq!(output["exception"]["type"], "ValueError");
         assert_eq!(output["logs"][0]["message"], "handling request");
