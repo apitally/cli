@@ -5,7 +5,7 @@
 [![Release](https://img.shields.io/github/v/release/apitally/cli?color=informational)](https://github.com/apitally/cli/releases/latest)
 [![npm](https://img.shields.io/npm/v/@apitally/cli?logo=npm&color=%23cb0000)](https://www.npmjs.com/package/@apitally/cli)
 
-A command-line interface for Apitally, built for humans and agents.
+A command-line interface for Apitally, built for agents and humans.
 
 Apitally is a simple API monitoring and analytics tool that makes it easy to understand API usage, monitor performance, and troubleshoot issues.
 
@@ -19,6 +19,16 @@ the 📚 [documentation](https://docs.apitally.io).
 - Bundled DuckDB, no runtime dependencies, written in Rust (it's fast)
 
 ## Installation
+
+### For agents
+
+Install the `apitally-cli` skill using the [skills CLI](https://github.com/vercel-labs/skills):
+
+```bash
+npx skills add apitally/cli
+```
+
+### For humans
 
 The CLI can be used with `npx`, no installation required:
 
@@ -47,13 +57,13 @@ To use the CLI, you need an API key. You can create one in the [Apitally dashboa
 Then run the `auth` command to configure your API key interactively:
 
 ```bash
-apitally auth
+npx @apitally/cli auth
 ```
 
 Or provide the key directly:
 
 ```bash
-apitally auth --api-key "your-api-key"
+npx @apitally/cli auth --api-key "your-api-key"
 ```
 
 The API key is saved to `~/.apitally/auth.json`.
@@ -71,9 +81,11 @@ You can also set the API key via the `APITALLY_API_KEY` environment variable or 
 | `request-logs` | Fetch request log data for an app               |
 | `sql`          | Run SQL queries against a local DuckDB database |
 
-All data commands output newline-delimited JSON (NDJSON) to stdout. Commands that fetch data from the API accept a `--db` flag to write data to a local DuckDB database instead, which can then be queried with the `sql` command.
+Commands that fetch data from the API output NDJSON to stdout by default. They accept a `--db` flag to write data to a local DuckDB database instead, which can then be queried with the `sql` command. The database defaults to `~/.apitally/data.duckdb` if no other path is specified.
 
-Run `apitally --help` or `apitally <command> --help` for detailed usage information. For a full command reference, see [skills/apitally-cli/references/commands.md](skills/apitally-cli/references/commands.md).
+Run `npx @apitally/cli --help` or `npx @apitally/cli <command> --help` for detailed usage information.
+
+For a full command reference, see [skills/apitally-cli/references/commands.md](skills/apitally-cli/references/commands.md).
 
 ## Exit codes
 
