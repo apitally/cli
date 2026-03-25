@@ -14,6 +14,7 @@ src/
   apps.rs               Apps command (fetch, DB write)
   consumers.rs          Consumers command (paginated fetch, DB write)
   request_logs.rs       Request logs command (Arrow IPC or NDJSON streaming)
+  request_details.rs    Request details command (single request fetch, DB write)
   sql.rs                SQL command (query DuckDB, output NDJSON)
   utils.rs              Shared helpers (open DuckDB connection, check HTTP response)
 npm/
@@ -33,14 +34,15 @@ npm/
 
 ## CLI Subcommands
 
-| Subcommand     | Data source                                  |
-| -------------- | -------------------------------------------- |
-| `auth`         | —                                            |
-| `whoami`       | `GET /v1/team`                               |
-| `apps`         | `GET /v1/apps`                               |
-| `consumers`    | `GET /v1/apps/{app_id}/consumers`            |
-| `request-logs` | `POST /v1/apps/{app_id}/request-logs/stream` |
-| `sql`          | Local DuckDB                                 |
+| Subcommand        | Data source                                         |
+| ----------------- | --------------------------------------------------- |
+| `auth`            | —                                                   |
+| `whoami`          | `GET /v1/team`                                      |
+| `apps`            | `GET /v1/apps`                                      |
+| `consumers`       | `GET /v1/apps/{app_id}/consumers`                   |
+| `request-logs`    | `POST /v1/apps/{app_id}/request-logs/stream`        |
+| `request-details` | `GET /v1/apps/{app_id}/request-logs/{request_uuid}` |
+| `sql`             | Local DuckDB                                        |
 
 ## Authentication with API
 

@@ -76,6 +76,7 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
 - `apps [--db [<path>]]` -- list apps (get app IDs)
 - `consumers <app-id> [--requests-since <dt>] [--db [<path>]]` -- list consumers for an app
 - `request-logs <app-id> --since <dt> [--until <dt>] [--fields <json>] [--filters <json>] [--limit <n>] [--db [<path>]]` -- fetch request logs (max 1,000,000 rows at once)
+- `request-details <app-id> <request-uuid> [--db [<path>]]` -- fetch full details for a single request (headers, body, logs, spans)
 - `sql "<query>" [--db <path>]` -- run SQL against local DuckDB
 
 ## Investigation Patterns
@@ -126,19 +127,10 @@ ORDER BY p95_ms DESC
 
 ### Inspect a specific request
 
-To inspect headers and payloads, first re-fetch with additional fields:
+Use `request-details` to fetch full details (headers, body, exception, application logs, spans) for a single request:
 
 ```
-npx @apitally/cli request-logs <app-id> --since "2026-03-23T00:00:00Z" \
-  --fields '["timestamp","request_uuid","method","url","status_code","response_time_ms","request_headers","request_body_json","response_body_json","exception_type","exception_message","exception_stacktrace"]' \
-  --filters '[{"field":"request_uuid","op":"eq","value":"<uuid>"}]' \
-  --db
-```
-
-Then query:
-
-```sql
-SELECT * FROM request_logs WHERE request_uuid = '<uuid>'
+npx @apitally/cli request-details <app-id> <request-uuid>
 ```
 
 ### Trace a consumer's activity

@@ -1,6 +1,6 @@
 # DuckDB Table Schemas
 
-Tables are created automatically when using the `--db` flag with `apps`, `consumers`, or `request-logs` commands. DuckDB uses a [PostgreSQL-compatible SQL dialect](https://duckdb.org/docs/stable/sql/dialect/overview).
+Tables are created automatically when using the `--db` flag with `apps`, `consumers`, `request-logs`, or `request-details` commands. DuckDB uses a [PostgreSQL-compatible SQL dialect](https://duckdb.org/docs/stable/sql/dialect/overview).
 
 ## apps
 
@@ -77,12 +77,51 @@ CREATE TABLE request_logs (
 
 Columns are only populated if the corresponding field was included in the `--fields` flag during fetch.
 
+## application_logs
+
+```sql
+CREATE TABLE application_logs (
+    app_id       INTEGER NOT NULL,
+    request_uuid VARCHAR NOT NULL,
+    timestamp    TIMESTAMPTZ NOT NULL,
+    message      VARCHAR NOT NULL,
+    level        VARCHAR,
+    logger       VARCHAR,
+    file         VARCHAR,
+    line         INTEGER
+);
+```
+
+Populated by the `request-details` command when using `--db`.
+
+## spans
+
+```sql
+CREATE TABLE spans (
+    app_id         INTEGER NOT NULL,
+    request_uuid   VARCHAR NOT NULL,
+    span_id        VARCHAR NOT NULL,
+    parent_span_id VARCHAR,
+    name           VARCHAR NOT NULL,
+    kind           VARCHAR NOT NULL,
+    start_time_ns  BIGINT NOT NULL,
+    end_time_ns    BIGINT NOT NULL,
+    duration_ns    BIGINT NOT NULL,
+    status         VARCHAR NOT NULL,
+    attributes     JSON
+);
+```
+
+Populated by the `request-details` command when using `--db`.
+
 ## Relationships
 
 - `request_logs.consumer_id` references `consumers.consumer_id` (join on both `app_id` and `consumer_id`)
 - `request_logs.app_id` references `apps.app_id`
 - `app_envs.app_id` references `apps.app_id`
 - `request_logs.env` matches `app_envs.name` (string, not a foreign key to `app_env_id`)
+- `application_logs.request_uuid` references `request_logs.request_uuid` (join on both `app_id` and `request_uuid`)
+- `spans.request_uuid` references `request_logs.request_uuid` (join on both `app_id` and `request_uuid`)
 
 ## Special Types
 
