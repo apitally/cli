@@ -89,18 +89,18 @@ Timestamps without timezone are treated as UTC. Results are ordered by timestamp
 | ------------------------- | ---------------------- | ------- |
 | `timestamp`               | string (datetime)      | yes     |
 | `request_uuid`            | string (ID)            | yes     |
-| `app_env`                 | string                 | yes     |
+| `env`                     | string                 | yes     |
 | `method`                  | string                 | yes     |
 | `path`                    | string                 | yes     |
 | `url`                     | string                 | yes     |
 | `consumer_id`             | int (ID)               | yes     |
 | `request_headers`         | array of string tuples | no      |
-| `request_size`            | int                    | yes     |
+| `request_size_bytes`      | int                    | yes     |
 | `request_body_json`       | string (JSON)          | no      |
 | `status_code`             | int                    | yes     |
 | `response_time_ms`        | int                    | yes     |
 | `response_headers`        | array of string tuples | no      |
-| `response_size`           | int                    | yes     |
+| `response_size_bytes`     | int                    | yes     |
 | `response_body_json`      | string (JSON)          | no      |
 | `client_ip`               | string                 | yes     |
 | `client_country_iso_code` | string                 | yes     |
@@ -153,8 +153,8 @@ All fields can be used in filters. Available operators depend on the field type:
 Example NDJSON output (without `--db`):
 
 ```json
-{"timestamp":"2026-01-01T00:15:00.000Z","request_uuid":"2fbc1df6-3124-4ed1-a376-7d2c64e4d5cf","app_env":"prod","method":"GET","path":"/test/1","url":"https://api.example.com/test/1","consumer_id":1,"request_size":0,"status_code":404,"response_time_ms":122,"response_size":66,"client_ip":"203.0.113.10","client_country_iso_code":"DE"}
-{"timestamp":"2026-01-01T00:16:00.000Z","request_uuid":"c6d32f8a-0bc1-43c1-b6c5-7d04363dc97c","app_env":"prod","method":"GET","path":"/test/2","url":"https://api.example.com/test/2","consumer_id":1,"request_size":0,"status_code":500,"response_time_ms":68,"response_size":66,"client_ip":"198.51.100.22","client_country_iso_code":"US"}
+{"timestamp":"2026-01-01T00:15:00.000Z","request_uuid":"2fbc1df6-3124-4ed1-a376-7d2c64e4d5cf","env":"prod","method":"GET","path":"/test/1","url":"https://api.example.com/test/1","consumer_id":1,"request_size_bytes":0,"status_code":404,"response_time_ms":122,"response_size_bytes":66,"client_ip":"203.0.113.10","client_country_iso_code":"DE"}
+{"timestamp":"2026-01-01T00:16:00.000Z","request_uuid":"c6d32f8a-0bc1-43c1-b6c5-7d04363dc97c","env":"prod","method":"GET","path":"/test/2","url":"https://api.example.com/test/2","consumer_id":1,"request_size_bytes":0,"status_code":500,"response_time_ms":68,"response_size_bytes":66,"client_ip":"198.51.100.22","client_country_iso_code":"US"}
 ```
 
 ## `sql`

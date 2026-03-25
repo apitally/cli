@@ -51,18 +51,18 @@ CREATE TABLE request_logs (
     app_id                  INTEGER NOT NULL,
     timestamp               TIMESTAMPTZ NOT NULL,
     request_uuid            VARCHAR NOT NULL,
-    app_env                 VARCHAR,
+    env                     VARCHAR,
     method                  VARCHAR NOT NULL,
     path                    VARCHAR,
     url                     VARCHAR NOT NULL,
     consumer_id             INTEGER,
     request_headers         STRUCT("1" VARCHAR, "2" VARCHAR)[],
-    request_size            BIGINT,
+    request_size_bytes      BIGINT,
     request_body_json       JSON,
     status_code             INTEGER,
     response_time_ms        INTEGER,
     response_headers        STRUCT("1" VARCHAR, "2" VARCHAR)[],
-    response_size           BIGINT,
+    response_size_bytes     BIGINT,
     response_body_json      JSON,
     client_ip               VARCHAR,
     client_country_iso_code VARCHAR,
@@ -82,7 +82,7 @@ Columns are only populated if the corresponding field was included in the `--fie
 - `request_logs.consumer_id` references `consumers.consumer_id` (join on both `app_id` and `consumer_id`)
 - `request_logs.app_id` references `apps.app_id`
 - `app_envs.app_id` references `apps.app_id`
-- `request_logs.app_env` matches `app_envs.name` (string, not a foreign key to `app_env_id`)
+- `request_logs.env` matches `app_envs.name` (string, not a foreign key to `app_env_id`)
 
 ## Special Types
 
