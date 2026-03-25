@@ -60,7 +60,7 @@ A team-scoped API key is required to use the CLI. The `auth` command writes the 
 6. **Query with SQL**:
 
    ```
-   npx @apitally/cli sql "SELECT method, path, status_code, COUNT(*) as n FROM request_logs WHERE status_code >= 400 GROUP BY ALL ORDER BY n DESC" --db
+   npx @apitally/cli sql "SELECT method, path, status_code, COUNT(*) as n FROM request_logs WHERE status_code >= 400 GROUP BY ALL ORDER BY n DESC"
    ```
 
 7. **Iterate** -- refine filters, fetch additional fields (headers, bodies, exceptions), or widen the time range as needed
@@ -76,7 +76,7 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
 - `apps [--db [<path>]]` -- list apps (get app IDs)
 - `consumers <app-id> [--db [<path>]]` -- list consumers for an app
 - `request-logs <app-id> --since <dt> [--until <dt>] [--fields <json>] [--filters <json>] [--limit <n>] [--db [<path>]]` -- fetch request logs (max 1,000,000 rows at once)
-- `sql "<query>" [--db [<path>]]` -- run SQL against local DuckDB
+- `sql "<query>" [--db <path>]` -- run SQL against local DuckDB
 
 ## Investigation Patterns
 
@@ -201,14 +201,14 @@ LIMIT 20
 
 ### Query JSON body fields
 
-Body fields (`request_body_json`, `response_body_json`) are JSON. Use DuckDB JSON functions:
+Body fields (`request_body_json`, `response_body_json`) are JSON. Use DuckDB JSON operators (parentheses required around `->>` in WHERE clauses due to operator precedence):
 
 ```sql
 SELECT timestamp, method, path,
-       response_body_json::JSON->>'error' as error_message
+       response_body_json->>'error' as error_message
 FROM request_logs
 WHERE response_body_json IS NOT NULL
-  AND response_body_json::JSON->>'error' IS NOT NULL
+  AND (response_body_json->>'error') IS NOT NULL
 ```
 
 ### Requests by country
@@ -226,6 +226,7 @@ ORDER BY count DESC
 | Code | Meaning                         |
 | ---- | ------------------------------- |
 | 0    | Success                         |
+| 1    | Unknown error                   |
 | 2    | Usage error (invalid arguments) |
 | 3    | Authentication error            |
 | 4    | Input error (invalid values)    |
