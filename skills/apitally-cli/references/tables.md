@@ -100,15 +100,18 @@ len([s FOR s IN request_headers IF lower(s."1") = 'authorization']) > 0
 
 ### JSON body fields (`JSON`)
 
-`request_body_json` and `response_body_json` are JSON strings. Use DuckDB JSON operators:
+`request_body_json` and `response_body_json` are `JSON` columns. Use DuckDB JSON operators:
 
 ```sql
 -- Extract a string field
-response_body_json::JSON->>'error'
+response_body_json->>'error'
 
 -- Extract a nested field
-request_body_json::JSON->'user'->>'email'
+response_body_json->'user'->>'email'
+
+-- Extract from an array (0-indexed)
+response_body_json->'items'->>0
 
 -- Use in WHERE
-WHERE response_body_json::JSON->>'status' = 'failed'
+WHERE response_body_json->>'status' = 'failed'
 ```
