@@ -1,6 +1,7 @@
 mod apps;
 mod auth;
 mod consumers;
+mod request_details;
 mod request_logs;
 mod sql;
 mod utils;
@@ -153,9 +154,33 @@ enum Command {
         db: Option<Option<PathBuf>>,
     },
 
+    /// Get details for a specific request
+    ///
+    /// Outputs a JSON object with full request details including headers, body,
+    /// application logs, and spans.
+    /// With --db, upserts the request into the `request_logs` table and inserts
+    /// rows into the `application_logs` and `spans` tables.
+    RequestDetails {
+        #[command(flatten)]
+        api: ApiArgs,
+
+        /// App ID
+        app_id: i64,
+
+        /// Request UUID
+        request_uuid: String,
+
+        /// Store results in DuckDB instead of outputting JSON
+        ///
+        /// Defaults to ~/.apitally/data.duckdb if no path is given.
+        #[arg(long, num_args = 0..=1)]
+        db: Option<Option<PathBuf>>,
+    },
+
     /// Run a SQL query against local DuckDB
     ///
-    /// Available tables: apps, app_envs, consumers, request_logs.
+    /// Available tables: apps, app_envs, consumers, request_logs,
+    /// application_logs, spans.
     Sql {
         /// SQL query to execute (reads from stdin if omitted)
         query: Option<String>,
@@ -262,6 +287,22 @@ fn run(cli: Cli) -> Result<()> {
                 std::io::stdout().lock(),
             )
         }
+        Command::RequestDetails {
+            api,
+            app_id,
+            request_uuid,
+            db,
+        } => {
+            let db = utils::resolve_db(db)?;
+            request_details::run(
+                app_id,
+                &request_uuid,
+                db.as_deref(),
+                api.api_key.as_deref(),
+                api.api_base_url.as_deref(),
+                std::io::stdout().lock(),
+            )
+        }
         Command::Sql { query, db } => {
             let db = db.map_or_else(utils::default_db_path, Ok)?;
             let query = match query {
@@ -298,6 +339,8 @@ mod tests {
         assert!(Cli::try_parse_from(["apitally"]).is_err()); // missing command
         assert!(Cli::try_parse_from(["apitally", "consumers"]).is_err()); // missing app_id
         assert!(Cli::try_parse_from(["apitally", "request-logs", "42"]).is_err()); // missing --since
+        assert!(Cli::try_parse_from(["apitally", "request-details", "42"]).is_err()); // missing request_uuid
+        assert!(Cli::try_parse_from(["apitally", "sql", "SELECT 1", "--db"]).is_err()); // missing db path
 
         // Valid subcommands should parse correctly
         assert!(matches!(
@@ -325,7 +368,22 @@ mod tests {
             Command::RequestLogs { app_id: 42, .. }
         ));
         assert!(matches!(
-            Cli::try_parse_from(["apitally", "sql", "--db", "test.db"])
+            Cli::try_parse_from([
+                "apitally",
+                "request-details",
+                "42",
+                "f328bb2a-93e1-4c4a-a263-47be6a1bcb15"
+            ])
+            .unwrap()
+            .command,
+            Command::RequestDetails {
+                app_id: 42,
+                ref request_uuid,
+                ..
+            } if request_uuid == "f328bb2a-93e1-4c4a-a263-47be6a1bcb15"
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["apitally", "sql", "--db", "test.duckdb"])
                 .unwrap()
                 .command,
             Command::Sql { query: None, .. }
