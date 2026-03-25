@@ -99,20 +99,20 @@ fn ensure_spans_table(conn: &duckdb::Connection) -> Result<()> {
     Ok(())
 }
 
-fn upsert_request_log(
+fn write_request_details_to_db(
     conn: &duckdb::Connection,
     app_id: i64,
     data: &RequestDetailsResponse,
 ) -> Result<()> {
-    let headers_to_json = |headers: &[(String, String)]| -> String {
+    let headers_to_json = |headers: &[(String, String)]| -> Result<String> {
         let arr: Vec<_> = headers
             .iter()
             .map(|(n, v)| serde_json::json!({"name": n, "value": v}))
             .collect();
-        serde_json::to_string(&arr).unwrap()
+        Ok(serde_json::to_string(&arr)?)
     };
-    let request_headers = headers_to_json(&data.request_headers);
-    let response_headers = headers_to_json(&data.response_headers);
+    let request_headers = headers_to_json(&data.request_headers)?;
+    let response_headers = headers_to_json(&data.response_headers)?;
     let exception = data.exception.as_ref();
 
     conn.execute(
@@ -173,7 +173,7 @@ fn upsert_request_log(
     Ok(())
 }
 
-fn write_application_logs(
+fn write_application_logs_to_db(
     conn: &duckdb::Connection,
     app_id: i64,
     request_uuid: &str,
@@ -199,7 +199,7 @@ fn write_application_logs(
     Ok(())
 }
 
-fn write_spans(
+fn write_spans_to_db(
     conn: &duckdb::Connection,
     app_id: i64,
     request_uuid: &str,
@@ -250,11 +250,14 @@ pub fn run(
         ensure_application_logs_table(conn)?;
         ensure_spans_table(conn)?;
 
-        upsert_request_log(conn, app_id, &data)?;
-        write_application_logs(conn, app_id, &data.request_uuid, &data.logs)?;
-        write_spans(conn, app_id, &data.request_uuid, &data.spans)?;
+        write_request_details_to_db(conn, app_id, &data)?;
+        write_application_logs_to_db(conn, app_id, &data.request_uuid, &data.logs)?;
+        write_spans_to_db(conn, app_id, &data.request_uuid, &data.spans)?;
 
-        eprintln!("Request details written to {}.", db_path.display());
+        eprintln!(
+            "Request details written to tables 'request_logs', 'application_logs', 'spans' in {}.\nDone.",
+            db_path.display(),
+        );
     } else {
         serde_json::to_writer(&mut writer, &data)?;
         writeln!(writer)?;
