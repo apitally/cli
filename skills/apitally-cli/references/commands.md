@@ -125,17 +125,18 @@ Filter object keys:
 
 All fields can be used in filters. Available operators depend on the field type:
 
-- **string / string (JSON)**: `eq`, `neq`, `in`, `not_in`, `like`, `not_like`, `ilike`, `not_ilike`
+- **string / string (JSON)**: `eq`, `neq`, `in`, `not_in`, `like`, `not_like`, `ilike`, `not_ilike`, `contains`, `not_contains`
 - **string (datetime)**: `eq`, `neq`, `gt`, `gte`, `lt`, `lte` — value is an ISO 8601 datetime string
 - **string (ID) / int (ID)**: `eq`, `neq`, `in`, `not_in`
-- **array of string tuples**: `eq`, `neq`, `in`, `not_in`, `like`, `not_like`, `ilike`, `not_ilike`, `exists`, `not_exists` — requires `key`
+- **array of string tuples**: `eq`, `neq`, `in`, `not_in`, `like`, `not_like`, `ilike`, `not_ilike`, `contains`, `not_contains`, `exists`, `not_exists` — requires `key`
 - **int**: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`
 
 #### Value rules
 
 - `in`/`not_in`: value must be a JSON array (of strings or ints matching the field type)
 - `exists`/`not_exists`: omit value entirely
-- `like`/`ilike`: use `%` as wildcard
+- `like`/`ilike`/`not_like`/`not_ilike`: use `%` as wildcard
+- `contains`/`not_contains`: case-insensitive substring match (no wildcards needed)
 
 #### Filter examples
 
@@ -146,7 +147,7 @@ All fields can be used in filters. Available operators depend on the field type:
 [{"field": "status_code", "op": "gte", "value": 400},{"field": "status_code", "op": "lt", "value": 500}]
 [{"field": "request_headers", "key": "x-api-version", "op": "exists"}]
 [{"field": "request_headers", "key": "content-type", "op": "eq", "value": "application/json"}]
-[{"field": "response_body_json", "op": "ilike", "value": "%error%"}]
+[{"field": "response_body_json", "op": "contains", "value": "error"}]
 ```
 
 Example NDJSON output (without `--db`):

@@ -127,9 +127,9 @@ enum Command {
         /// JSON array of filter objects with "field", "op", and "value" keys
         ///
         /// Supported operators:
-        ///   string fields: eq, neq, in, not_in, like, not_like, ilike, not_ilike
+        ///   string fields: eq, neq, in, not_in, like, not_like, ilike, not_ilike, contains, not_contains
         ///   numeric fields: eq, neq, gt, gte, lt, lte, in, not_in
-        ///   header fields: eq, neq, in, not_in, like, not_like, ilike, not_ilike, exists, not_exists
+        ///   header fields: eq, neq, in, not_in, like, not_like, ilike, not_ilike, contains, not_contains, exists, not_exists
         ///   ID fields: eq, neq, in, not_in
         ///
         /// For "in" and "not_in", "value" must be a JSON array. For header fields,
