@@ -125,16 +125,16 @@ Filter object keys:
 
 All fields can be used in filters. Available operators depend on the field type:
 
-- **string / string (JSON)**: `eq`, `neq`, `in`, `not_in`, `like`, `not_like`, `ilike`, `not_ilike`, `contains`, `not_contains`
+- **string / string (JSON)**: `eq`, `neq`, `in`, `not_in`, `like`, `not_like`, `ilike`, `not_ilike`, `contains`, `not_contains`, `is_null`, `is_not_null`
 - **string (datetime)**: `eq`, `neq`, `gt`, `gte`, `lt`, `lte` — value is an ISO 8601 datetime string
-- **string (ID) / int (ID)**: `eq`, `neq`, `in`, `not_in`
+- **string (ID) / int (ID)**: `eq`, `neq`, `in`, `not_in`, `is_null`, `is_not_null`
 - **array of string tuples**: `eq`, `neq`, `in`, `not_in`, `like`, `not_like`, `ilike`, `not_ilike`, `contains`, `not_contains`, `exists`, `not_exists` — requires `key`
 - **int**: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`
 
 #### Value rules
 
 - `in`/`not_in`: value must be a JSON array (of strings or ints matching the field type)
-- `exists`/`not_exists`: omit value entirely
+- `exists`/`not_exists`/`is_null`/`is_not_null`: omit value entirely
 - `like`/`ilike`/`not_like`/`not_ilike`: use `%` as wildcard
 - `contains`/`not_contains`: case-insensitive substring match (no wildcards needed)
 
@@ -142,6 +142,7 @@ All fields can be used in filters. Available operators depend on the field type:
 
 ```json
 [{"field": "consumer_id", "op": "eq", "value": 42}]
+[{"field": "consumer_id", "op": "is_null"}]
 [{"field": "path", "op": "eq", "value": "/v1/users/{user_id}"}]
 [{"field": "url", "op": "ilike", "value": "%/users/123%"}]
 [{"field": "status_code", "op": "gte", "value": 400},{"field": "status_code", "op": "lt", "value": 500}]
@@ -187,6 +188,8 @@ Run a SQL query against a local DuckDB database. The query can be passed as an a
 - `--db`: Path to DuckDB database
 
 Available tables: `apps`, `app_envs`, `consumers`, `request_logs`, `application_logs`, `spans`. See [tables.md](tables.md) for schemas.
+
+**Important:** The database may contain data from previous sessions. Always filter queries by `app_id`, `timestamp`, and other relevant fields to avoid including unrelated data.
 
 DuckDB uses a [PostgreSQL-compatible SQL dialect](https://duckdb.org/docs/stable/sql/dialect/overview).
 

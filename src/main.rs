@@ -127,13 +127,14 @@ enum Command {
         /// JSON array of filter objects with "field", "op", and "value" keys
         ///
         /// Supported operators:
-        ///   string fields: eq, neq, in, not_in, like, not_like, ilike, not_ilike, contains, not_contains
+        ///   string fields: eq, neq, in, not_in, like, not_like, ilike, not_ilike, contains, not_contains, is_null, is_not_null
         ///   numeric fields: eq, neq, gt, gte, lt, lte, in, not_in
         ///   header fields: eq, neq, in, not_in, like, not_like, ilike, not_ilike, contains, not_contains, exists, not_exists
-        ///   ID fields: eq, neq, in, not_in
+        ///   ID fields: eq, neq, in, not_in, is_null, is_not_null
         ///
         /// For "in" and "not_in", "value" must be a JSON array. For header fields,
-        /// use "key" for the header name. For "exists" and "not_exists", omit "value".
+        /// use "key" for the header name. For "exists", "not_exists", "is_null",
+        /// and "is_not_null", omit "value".
         ///
         /// Examples:
         ///   [{"field":"status_code","op":"gte","value":400}]
