@@ -11,25 +11,45 @@ description: >
 
 # Apitally CLI
 
-The Apitally CLI retrieves API request log data from [Apitally](https://apitally.io) and optionally stores it in a local DuckDB database for investigation with SQL. Each record is an individual API request with method, URL, status code, response time, consumer, headers, payloads, exceptions, and more. Request log retention is **15 days**. Older data is not available.
+The Apitally CLI retrieves API request log data from [Apitally](https://apitally.io) and optionally stores it in a local DuckDB database for investigation with SQL. Each record is an individual API request with method, URL, status code, response time, consumer, headers, payloads, exceptions, and more. Request log retention is **15 days**.
 
-Run commands with npx (no install needed):
+Run commands with `npx` (no install needed):
 
 ```
 npx @apitally/cli <command> [--api-key <key>]
 ```
 
+A team-scoped API key is required to use the CLI. The `auth` command writes the provided API key to `~/.apitally/auth.json`. It's then used by all subsequent commands unless overridden by the `--api-key` flag.
+
 All commands output NDJSON to stdout by default. With `--db`, data is written to a DuckDB database instead (`~/.apitally/data.duckdb` by default), enabling SQL queries via the `sql` command.
 
-A team-scoped API key is required to use the CLI. The `auth` command writes the provided API key to `~/.apitally/auth.json`. It's then used by all subsequent commands unless overridden by the `--api-key` flag.
+## Key Concepts
+
+- **App and environment** — An app is a monitored API application, identified by a numeric `app_id`. Each app has one or more environments (e.g. "prod", "dev"). The `env` field on request logs is a string matching the environment name.
+- **Consumer** — An API client or user tracked by Apitally. `consumer_id` is a numeric internal ID (surrogate key, used in request log filters and JOINs). `identifier` is a string set by the application (e.g. email, username) to uniquely identify the consumer. `name` is a display name (auto-generated from `identifier` if not explicitly set). `group` is an optional group name.
+- **Path vs URL** — `path` is the parameterized route template (e.g. `/users/{user_id}`), good for grouping by endpoint. `url` is the full request URL with actual values and query parameters (e.g. `https://api.example.com/users/123?limit=10`).
+- **Application logs** — Server-side log entries emitted by application code during request handling. Only available via `request-details` as the `logs` field.
+- **Spans** — OpenTelemetry trace spans representing units of work during request handling (e.g. database queries, external API calls, instrumented function calls). Only available via `request-details`. Form a tree via `parent_span_id`.
+
+## Command Quick Reference
+
+All commands are run via `npx @apitally/cli <command>`. For full details, see [references/commands.md](references/commands.md).
+
+- `auth [--api-key <key>]` -- configure API key
+- `whoami` -- check auth, show team
+- `apps [--db [<path>]]` -- list apps (get app IDs)
+- `consumers <app-id> [--requests-since <dt>] [--db [<path>]]` -- list consumers for an app (get consumer IDs)
+- `request-logs <app-id> --since <dt> [--until <dt>] [--fields <json>] [--filters <json>] [--limit <n>] [--db [<path>]]` -- fetch request logs (max 1,000,000 rows at once)
+- `request-details <app-id> <request-uuid> [--db [<path>]]` -- fetch full details for a single request (including headers, payloads, exception info, application logs, and spans)
+- `sql "<query>" [--db <path>]` -- run SQL against local DuckDB
 
 ## Workflow
 
-1. **Check authentication** -- run `npx @apitally/cli whoami`. If it fails, ask the user to provide their Apitally API key or run `npx @apitally/cli auth` themselves. Explain that API keys can be created in the Apitally dashboard under Settings > API keys (https://app.apitally.io/settings/api-keys). If the user provides a key, run `npx @apitally/cli auth --api-key <key>` to store it.
+1. **Check authentication** — run `npx @apitally/cli whoami`. If it fails, ask the user to provide their Apitally API key or run `npx @apitally/cli auth` themselves. Explain that API keys can be created in the Apitally dashboard under Settings > API keys (https://app.apitally.io/settings/api-keys). If the user provides a key, run `npx @apitally/cli auth --api-key <key>` to store it.
 
-2. **Identify the app** -- run `npx @apitally/cli apps` to list apps and get their IDs. If there is only one app, use it. Otherwise, if the correct app can't be inferred from the user's previous messages, ask the user which app they mean.
+2. **Identify the app** — run `npx @apitally/cli apps` to list apps and get their IDs. If there is more than one app, and the correct app can't be inferred from the user's messages, ask the user which app they mean.
 
-3. **Determine if consumers are involved** -- decide which scenario applies:
+3. **Determine if consumers are involved** — decide which scenario applies:
    - **(a) Specific consumer(s)**: the user is asking about specific consumers (e.g. by email, name, or group). Fetch consumers first, then query to find the matching `consumer_id`, then use it as a filter when fetching request logs.
    - **(b) Consumer context needed**: the investigation involves consumers but not specific ones known upfront (e.g. "which consumers cause the most errors"). Fetch consumers into DuckDB for later JOINs with request logs.
    - **(c) No consumer involvement**: skip fetching consumers.
@@ -65,65 +85,11 @@ A team-scoped API key is required to use the CLI. The `auth` command writes the 
    npx @apitally/cli sql "SELECT method, path, status_code, COUNT(*) as n FROM request_logs WHERE status_code >= 400 GROUP BY ALL ORDER BY n DESC"
    ```
 
-7. **Iterate** -- refine filters, fetch additional fields (headers, bodies, exceptions), or widen the time range as needed
-
-## Command Quick Reference
-
-All commands are run via `npx @apitally/cli <command>`. For full details, see [references/commands.md](references/commands.md).
-
-- `auth [--api-key <key>]` -- configure API key
-- `whoami` -- check auth, show team
-- `apps [--db [<path>]]` -- list apps (get app IDs)
-- `consumers <app-id> [--requests-since <dt>] [--db [<path>]]` -- list consumers for an app
-- `request-logs <app-id> --since <dt> [--until <dt>] [--fields <json>] [--filters <json>] [--limit <n>] [--db [<path>]]` -- fetch request logs (max 1,000,000 rows at once)
-- `request-details <app-id> <request-uuid> [--db [<path>]]` -- fetch full details for a single request (headers, body, logs, spans)
-- `sql "<query>" [--db <path>]` -- run SQL against local DuckDB
+7. **Iterate** — refine filters, fetch additional fields (headers, bodies, exceptions), or widen the time range as needed.
 
 ## Investigation Patterns
 
 For DuckDB table schemas, see [references/tables.md](references/tables.md).
-
-### Find failing requests
-
-```sql
-SELECT timestamp, method, path, status_code, response_time_ms, client_ip
-FROM request_logs
-WHERE status_code >= 400
-ORDER BY timestamp DESC
-LIMIT 50
-```
-
-### Error breakdown by endpoint
-
-```sql
-SELECT method, path, status_code, COUNT(*) as count
-FROM request_logs
-WHERE status_code >= 400
-GROUP BY method, path, status_code
-ORDER BY count DESC
-```
-
-### Find slow requests
-
-```sql
-SELECT timestamp, method, path, status_code, response_time_ms
-FROM request_logs
-ORDER BY response_time_ms DESC
-LIMIT 20
-```
-
-### Response time by endpoint (p50, p95)
-
-```sql
-SELECT method, path,
-       COUNT(*) as count,
-       ROUND(quantile_cont(response_time_ms, 0.5)) as p50_ms,
-       ROUND(quantile_cont(response_time_ms, 0.95)) as p95_ms,
-       MAX(response_time_ms) as max_ms
-FROM request_logs
-GROUP BY method, path
-ORDER BY p95_ms DESC
-```
 
 ### Inspect a specific request
 
@@ -201,16 +167,6 @@ SELECT timestamp, method, path,
 FROM request_logs
 WHERE response_body_json IS NOT NULL
   AND (response_body_json->>'error') IS NOT NULL
-```
-
-### Requests by country
-
-```sql
-SELECT client_country_iso_code, COUNT(*) as count
-FROM request_logs
-WHERE client_country_iso_code IS NOT NULL
-GROUP BY client_country_iso_code
-ORDER BY count DESC
 ```
 
 ## Exit Codes

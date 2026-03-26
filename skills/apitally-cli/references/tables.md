@@ -8,7 +8,7 @@ Tables are created automatically when using the `--db` flag with `apps`, `consum
 CREATE TABLE apps (
     app_id          INTEGER NOT NULL UNIQUE,
     name            TEXT NOT NULL,
-    framework       TEXT NOT NULL,
+    framework       TEXT NOT NULL,            -- e.g. FastAPI, Express
     client_id       TEXT NOT NULL,
     created_at      TIMESTAMPTZ NOT NULL
 );
@@ -33,9 +33,9 @@ CREATE TABLE app_envs (
 CREATE TABLE consumers (
     app_id          INTEGER NOT NULL,
     consumer_id     INTEGER NOT NULL,
-    identifier      TEXT NOT NULL,
-    name            TEXT NOT NULL,
-    "group"         TEXT,
+    identifier      TEXT NOT NULL,             -- e.g. email, username, API key name
+    name            TEXT NOT NULL,             -- auto-generated from identifier if not set
+    "group"         TEXT,                      -- optional consumer group name
     created_at      TIMESTAMPTZ NOT NULL,
     last_request_at TIMESTAMPTZ,
     UNIQUE (app_id, consumer_id)
@@ -51,11 +51,11 @@ CREATE TABLE request_logs (
     app_id                  INTEGER NOT NULL,
     timestamp               TIMESTAMPTZ NOT NULL,
     request_uuid            VARCHAR NOT NULL,
-    env                     VARCHAR,
+    env                     VARCHAR,            -- environment name, e.g. "prod"
     method                  VARCHAR NOT NULL,
-    path                    VARCHAR,
-    url                     VARCHAR NOT NULL,
-    consumer_id             INTEGER,
+    path                    VARCHAR,            -- parameterized route template, e.g. /users/{user_id}
+    url                     VARCHAR NOT NULL,   -- full URL with actual path values, e.g. https://api.example.com/users/123
+    consumer_id             INTEGER,            -- references consumers.consumer_id
     request_headers         STRUCT(name VARCHAR, value VARCHAR)[],
     request_size_bytes      BIGINT,
     request_body_json       JSON,
@@ -70,7 +70,7 @@ CREATE TABLE request_logs (
     exception_message       VARCHAR,
     exception_stacktrace    VARCHAR,
     sentry_event_id         VARCHAR,
-    trace_id                VARCHAR,
+    trace_id                VARCHAR,            -- OpenTelemetry trace ID (hex)
     UNIQUE (app_id, request_uuid)
 );
 ```
@@ -100,14 +100,14 @@ Populated by the `request-details` command when using `--db`.
 CREATE TABLE spans (
     app_id         INTEGER NOT NULL,
     request_uuid   VARCHAR NOT NULL,
-    span_id        VARCHAR NOT NULL,
+    span_id        VARCHAR NOT NULL,          -- OpenTelemetry span ID (hex)
     parent_span_id VARCHAR,
     name           VARCHAR NOT NULL,
-    kind           VARCHAR NOT NULL,
-    start_time_ns  BIGINT NOT NULL,
-    end_time_ns    BIGINT NOT NULL,
+    kind           VARCHAR NOT NULL,          -- e.g. SERVER, CLIENT, INTERNAL
+    start_time_ns  BIGINT NOT NULL,           -- Unix epoch nanoseconds
+    end_time_ns    BIGINT NOT NULL,           -- Unix epoch nanoseconds
     duration_ns    BIGINT NOT NULL,
-    status         VARCHAR NOT NULL,
+    status         VARCHAR NOT NULL,          -- e.g. OK, ERROR, UNSET
     attributes     JSON
 );
 ```

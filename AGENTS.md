@@ -2,7 +2,7 @@
 
 ## Product Overview
 
-[Apitally](https://apitally.io) is an API monitoring and analytics tool. This is a CLI tool for humans and AI agents. It retrieves data from the Apitally API and outputs it in NDJSON format, or optionally stores it in a local DuckDB database and allows running arbitrary SQL queries against it.
+[Apitally](https://apitally.io) is an API monitoring and analytics tool. This is a CLI tool for AI agents and humans. It retrieves data from the Apitally API and outputs it in NDJSON format, or optionally stores it in a local DuckDB database and allows running arbitrary SQL queries against it.
 
 ## Repository Structure
 
@@ -20,6 +20,10 @@ src/
 npm/
   cli.js                Thin wrapper that spawns the native binary
   install.js            postinstall script that downloads the correct binary
+skills/
+  apitally-cli/         Agent skill: guides AI agents through using the CLI to investigate API issues
+    SKILL.md            Workflow, command reference, investigation patterns, SQL examples
+    references/         Detailed command and table schema references
 ```
 
 ## Tech Stack
@@ -82,7 +86,7 @@ Triggered by publishing a GitHub release. Two jobs:
 
 ### Module `run()` functions
 
-Each command module exposes a `pub fn run(...)` that does all the work: resolve auth, call the API, write output. The last parameter is always `impl Write` (stdout in production, `Vec<u8>` in tests). Data goes to the writer (stdout), human messages and progress go to stderr.
+Each command module exposes a `pub fn run(...)` that does all the work: resolve auth, call the API, write output. The last parameter is `impl Write` (stdout in production, `Vec<u8>` in tests), except `auth::run` which takes `&mut impl Read` (stdin) instead. Data goes to the writer (stdout), human messages and progress go to stderr.
 
 ### Error handling and exit codes
 
@@ -99,10 +103,6 @@ Exit code 2 comes from clap (usage errors). `check_response` in `utils.rs` centr
 ### HTTP conventions
 
 API requests use `api_get`/`api_post` helpers in `utils.rs`. API key is sent as the `Api-Key` header.
-
-### request-logs dual format
-
-The `request-logs` command sends `format: "ndjson"` or `format: "arrow"` depending on whether `--db` is given. NDJSON mode is a raw passthrough (`io::copy` from response to stdout). Arrow mode streams Arrow IPC batches into a DuckDB staging table, then does `INSERT OR REPLACE` into the final table.
 
 ## Tests
 
@@ -123,3 +123,4 @@ Inline `#[cfg(test)] mod tests` in each source file. Run with `cargo test`.
 - Verify work compiles and passes `cargo clippy` before considering a task complete
 - Keep user-facing output concise
 - Use inline comments sparingly — only to explain non-obvious intent
+- When changing CLI commands, flags, output format, or DuckDB schemas, update the agent skill in `skills/apitally-cli/` (including its `references/` docs) to reflect those changes
