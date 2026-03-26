@@ -35,8 +35,6 @@ npx @apitally/cli apps [--db [<path>]]
 
 List all apps in the team. Use this to get app IDs for other commands. Outputs NDJSON to stdout by default.
 
-**Arguments:**
-
 - `--db`: Write to `apps` and `app_envs` tables in DuckDB instead of outputting NDJSON to stdout
 
 Example NDJSON output (without `--db`):
@@ -158,6 +156,23 @@ Example NDJSON output (without `--db`):
 {"timestamp":"2026-01-01T00:16:00.000Z","request_uuid":"c6d32f8a-0bc1-43c1-b6c5-7d04363dc97c","env":"prod","method":"GET","path":"/test/2","url":"https://api.example.com/test/2","consumer_id":1,"request_size_bytes":0,"status_code":500,"response_time_ms":68,"response_size_bytes":66,"client_ip":"198.51.100.22","client_country_iso_code":"US"}
 ```
 
+## `request-details`
+
+```
+npx @apitally/cli request-details <app-id> <request-uuid> [--db [<path>]]
+```
+
+Get full details for a specific request identified by its UUID, including headers, request/response body, exception info, application logs, and spans. Outputs a JSON object to stdout by default.
+
+- `--db`: Write to `request_logs`, `application_logs`, and `spans` tables in DuckDB instead of outputting JSON to stdout
+
+Example JSON output (without `--db`):
+
+<!-- prettier-ignore -->
+```json
+{"timestamp":"2026-01-01T00:15:00.000Z","request_uuid":"2fbc1df6-3124-4ed1-a376-7d2c64e4d5cf","env":"prod","method":"GET","path":"/test/1","url":"https://api.example.com/test/1","consumer":"bob@example.com","request_headers":[["content-type","application/json"]],"request_size_bytes":0,"request_body_json":null,"status_code":200,"response_time_ms":122,"response_headers":[["x-request-id","abc"]],"response_size_bytes":66,"response_body_json":"{\"ok\":true}","client_ip":"203.0.113.10","client_country_iso_code":"DE","trace_id":"0000000000000000aaaaaaaaaaaaaaaa","exception":null,"logs":[{"timestamp":"2026-01-01T00:15:00.100Z","message":"handling request","level":"INFO","logger":"app","file":"main.py","line":42}],"spans":[{"span_id":"00000000000000aa","parent_span_id":null,"name":"GET /test/1","kind":"SERVER","start_time_ns":1735689600000000000,"end_time_ns":1735689600050000000,"duration_ns":50000000,"status":"OK","attributes":{"http.method":"GET"}}]}
+```
+
 ## `sql`
 
 ```
@@ -170,7 +185,7 @@ Run a SQL query against a local DuckDB database. The query can be passed as an a
 
 - `--db`: Path to DuckDB database
 
-Available tables: `apps`, `app_envs`, `consumers`, `request_logs`. See [tables.md](tables.md) for schemas.
+Available tables: `apps`, `app_envs`, `consumers`, `request_logs`, `application_logs`, `spans`. See [tables.md](tables.md) for schemas.
 
 DuckDB uses a [PostgreSQL-compatible SQL dialect](https://duckdb.org/docs/stable/sql/dialect/overview).
 

@@ -71,7 +71,12 @@ fn write_consumers_to_db(
     app_id: i64,
     consumers: &[ConsumerItem],
 ) -> Result<()> {
-    let mut stmt = conn.prepare("INSERT OR REPLACE INTO consumers VALUES (?, ?, ?, ?, ?, ?, ?)")?;
+    let mut stmt = conn.prepare(
+        "INSERT OR REPLACE INTO consumers (
+            app_id, consumer_id, identifier, name, \"group\",
+            created_at, last_request_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )?;
     for consumer in consumers {
         let group_name = consumer.group.as_ref().map(|g| g.name.as_str());
         stmt.execute(duckdb::params![

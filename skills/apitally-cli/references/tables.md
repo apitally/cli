@@ -1,6 +1,6 @@
 # DuckDB Table Schemas
 
-Tables are created automatically when using the `--db` flag with `apps`, `consumers`, or `request-logs` commands. DuckDB uses a [PostgreSQL-compatible SQL dialect](https://duckdb.org/docs/stable/sql/dialect/overview).
+Tables are created automatically when using the `--db` flag with `apps`, `consumers`, `request-logs`, or `request-details` commands. DuckDB uses a [PostgreSQL-compatible SQL dialect](https://duckdb.org/docs/stable/sql/dialect/overview).
 
 ## apps
 
@@ -56,12 +56,12 @@ CREATE TABLE request_logs (
     path                    VARCHAR,
     url                     VARCHAR NOT NULL,
     consumer_id             INTEGER,
-    request_headers         STRUCT("1" VARCHAR, "2" VARCHAR)[],
+    request_headers         STRUCT(name VARCHAR, value VARCHAR)[],
     request_size_bytes      BIGINT,
     request_body_json       JSON,
     status_code             INTEGER,
     response_time_ms        INTEGER,
-    response_headers        STRUCT("1" VARCHAR, "2" VARCHAR)[],
+    response_headers        STRUCT(name VARCHAR, value VARCHAR)[],
     response_size_bytes     BIGINT,
     response_body_json      JSON,
     client_ip               VARCHAR,
@@ -77,25 +77,64 @@ CREATE TABLE request_logs (
 
 Columns are only populated if the corresponding field was included in the `--fields` flag during fetch.
 
+## application_logs
+
+```sql
+CREATE TABLE application_logs (
+    app_id       INTEGER NOT NULL,
+    request_uuid VARCHAR NOT NULL,
+    timestamp    TIMESTAMPTZ NOT NULL,
+    message      VARCHAR NOT NULL,
+    level        VARCHAR,
+    logger       VARCHAR,
+    file         VARCHAR,
+    line         INTEGER
+);
+```
+
+Populated by the `request-details` command when using `--db`.
+
+## spans
+
+```sql
+CREATE TABLE spans (
+    app_id         INTEGER NOT NULL,
+    request_uuid   VARCHAR NOT NULL,
+    span_id        VARCHAR NOT NULL,
+    parent_span_id VARCHAR,
+    name           VARCHAR NOT NULL,
+    kind           VARCHAR NOT NULL,
+    start_time_ns  BIGINT NOT NULL,
+    end_time_ns    BIGINT NOT NULL,
+    duration_ns    BIGINT NOT NULL,
+    status         VARCHAR NOT NULL,
+    attributes     JSON
+);
+```
+
+Populated by the `request-details` command when using `--db`.
+
 ## Relationships
 
 - `request_logs.consumer_id` references `consumers.consumer_id` (join on both `app_id` and `consumer_id`)
 - `request_logs.app_id` references `apps.app_id`
 - `app_envs.app_id` references `apps.app_id`
 - `request_logs.env` matches `app_envs.name` (string, not a foreign key to `app_env_id`)
+- `application_logs.request_uuid` references `request_logs.request_uuid` (join on both `app_id` and `request_uuid`)
+- `spans.request_uuid` references `request_logs.request_uuid` (join on both `app_id` and `request_uuid`)
 
 ## Special Types
 
-### Headers (`STRUCT("1" VARCHAR, "2" VARCHAR)[]`)
+### Headers (`STRUCT(name VARCHAR, value VARCHAR)[]`)
 
-Headers are arrays of structs where `"1"` is the header name and `"2"` is the header value. Use DuckDB list comprehensions:
+Headers are arrays of structs with `name` and `value` fields. Use DuckDB list comprehensions:
 
 ```sql
 -- Extract a specific header value
-[s."2" FOR s IN request_headers IF lower(s."1") = 'content-type'][1]
+[s.value FOR s IN request_headers IF lower(s.name) = 'content-type'][1]
 
 -- Check if a header exists
-len([s FOR s IN request_headers IF lower(s."1") = 'authorization']) > 0
+len([s FOR s IN request_headers IF lower(s.name) = 'authorization']) > 0
 ```
 
 ### JSON body fields (`JSON`)

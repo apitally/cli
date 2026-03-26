@@ -60,8 +60,16 @@ fn ensure_apps_tables(conn: &duckdb::Connection) -> Result<()> {
 }
 
 fn write_apps_to_db(conn: &duckdb::Connection, apps: &[AppItem]) -> Result<()> {
-    let mut app_stmt = conn.prepare("INSERT OR REPLACE INTO apps VALUES (?, ?, ?, ?, ?)")?;
-    let mut env_stmt = conn.prepare("INSERT OR REPLACE INTO app_envs VALUES (?, ?, ?, ?, ?)")?;
+    let mut app_stmt = conn.prepare(
+        "INSERT OR REPLACE INTO apps (
+            app_id, name, framework, client_id, created_at
+        ) VALUES (?, ?, ?, ?, ?)",
+    )?;
+    let mut env_stmt = conn.prepare(
+        "INSERT OR REPLACE INTO app_envs (
+            app_id, app_env_id, name, created_at, last_sync_at
+        ) VALUES (?, ?, ?, ?, ?)",
+    )?;
     for app in apps {
         app_stmt.execute(duckdb::params![
             app.id,

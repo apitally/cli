@@ -72,14 +72,15 @@ You can also set the API key via the `APITALLY_API_KEY` environment variable or 
 
 ## Commands
 
-| Command        | Description                                     |
-| -------------- | ----------------------------------------------- |
-| `auth`         | Configure API key                               |
-| `whoami`       | Check authentication and show team info         |
-| `apps`         | List all apps in your team                      |
-| `consumers`    | List consumers for an app                       |
-| `request-logs` | Fetch request log data for an app               |
-| `sql`          | Run SQL queries against a local DuckDB database |
+| Command           | Description                                     |
+| ----------------- | ----------------------------------------------- |
+| `auth`            | Configure API key                               |
+| `whoami`          | Check authentication and show team info         |
+| `apps`            | List all apps in your team                      |
+| `consumers`       | List consumers for an app                       |
+| `request-logs`    | Fetch request log data for an app               |
+| `request-details` | Fetch details for a specific request            |
+| `sql`             | Run SQL queries against a local DuckDB database |
 
 Commands that fetch data from the API output NDJSON to stdout by default. They accept a `--db` flag to write data to a local DuckDB database instead, which can then be queried with the `sql` command. The database defaults to `~/.apitally/data.duckdb` if no other path is specified.
 
