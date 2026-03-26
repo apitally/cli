@@ -116,9 +116,13 @@ fn write_request_details_to_db(
     let exception = data.exception.as_ref();
 
     conn.execute(
-        "INSERT OR REPLACE INTO request_logs VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-        )",
+        "INSERT OR REPLACE INTO request_logs (
+            app_id, timestamp, request_uuid, env, method, path, url, consumer_id,
+            request_headers, request_size_bytes, request_body_json,
+            status_code, response_time_ms, response_headers, response_size_bytes, response_body_json,
+            client_ip, client_country_iso_code,
+            exception_type, exception_message, exception_stacktrace, sentry_event_id, trace_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         duckdb::params![
             app_id,
             &data.timestamp,
@@ -158,7 +162,12 @@ fn write_application_logs_to_db(
         "DELETE FROM application_logs WHERE app_id = ? AND request_uuid = ?",
         duckdb::params![app_id, request_uuid],
     )?;
-    let mut stmt = conn.prepare("INSERT INTO application_logs VALUES (?, ?, ?, ?, ?, ?, ?, ?)")?;
+    let mut stmt = conn.prepare(
+        "INSERT INTO application_logs (
+            app_id, request_uuid, timestamp, message, level,
+            logger, file, line
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    )?;
     for log in logs {
         stmt.execute(duckdb::params![
             app_id,
@@ -184,7 +193,12 @@ fn write_spans_to_db(
         "DELETE FROM spans WHERE app_id = ? AND request_uuid = ?",
         duckdb::params![app_id, request_uuid],
     )?;
-    let mut stmt = conn.prepare("INSERT INTO spans VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")?;
+    let mut stmt = conn.prepare(
+        "INSERT INTO spans (
+            app_id, request_uuid, span_id, parent_span_id, name, kind,
+            start_time_ns, end_time_ns, duration_ns, status, attributes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )?;
     for span in spans {
         let attributes = serde_json::to_string(&span.attributes)?;
         stmt.execute(duckdb::params![
