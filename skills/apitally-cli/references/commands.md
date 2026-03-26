@@ -83,30 +83,30 @@ Timestamps without timezone are treated as UTC. Results are ordered by timestamp
 
 ### Fields
 
-| Field                     | Type                   | Default |
-| ------------------------- | ---------------------- | ------- |
-| `timestamp`               | string (datetime)      | yes     |
-| `request_uuid`            | string (ID)            | yes     |
-| `env`                     | string                 | yes     |
-| `method`                  | string                 | yes     |
-| `path`                    | string                 | yes     |
-| `url`                     | string                 | yes     |
-| `consumer_id`             | int (ID)               | yes     |
-| `request_headers`         | array of string tuples | no      |
-| `request_size_bytes`      | int                    | yes     |
-| `request_body_json`       | string (JSON)          | no      |
-| `status_code`             | int                    | yes     |
-| `response_time_ms`        | int                    | yes     |
-| `response_headers`        | array of string tuples | no      |
-| `response_size_bytes`     | int                    | yes     |
-| `response_body_json`      | string (JSON)          | no      |
-| `client_ip`               | string                 | yes     |
-| `client_country_iso_code` | string                 | yes     |
-| `exception_type`          | string                 | no      |
-| `exception_message`       | string                 | no      |
-| `exception_stacktrace`    | string                 | no      |
-| `sentry_event_id`         | string (ID)            | no      |
-| `trace_id`                | string (ID)            | no      |
+| Field                     | Type                             | Default |
+| ------------------------- | -------------------------------- | ------- |
+| `timestamp`               | string (datetime)                | yes     |
+| `request_uuid`            | string (ID)                      | yes     |
+| `env`                     | string                           | yes     |
+| `method`                  | string                           | yes     |
+| `path`                    | string                           | yes     |
+| `url`                     | string                           | yes     |
+| `consumer_id`             | int (ID)                         | yes     |
+| `request_headers`         | array of string tuples (headers) | no      |
+| `request_size_bytes`      | int                              | yes     |
+| `request_body_json`       | string (JSON)                    | no      |
+| `status_code`             | int                              | yes     |
+| `response_time_ms`        | int                              | yes     |
+| `response_headers`        | array of string tuples (headers) | no      |
+| `response_size_bytes`     | int                              | yes     |
+| `response_body_json`      | string (JSON)                    | no      |
+| `client_ip`               | string                           | yes     |
+| `client_country_iso_code` | string                           | yes     |
+| `exception_type`          | string                           | no      |
+| `exception_message`       | string                           | no      |
+| `exception_stacktrace`    | string                           | no      |
+| `sentry_event_id`         | string (ID)                      | no      |
+| `trace_id`                | string (ID)                      | no      |
 
 Default fields are included when `--fields` is omitted. When `--fields` is provided, it replaces the default set and only the specified fields are returned. `timestamp`, `request_uuid`, `method`, and `url` are always included regardless.
 
@@ -128,7 +128,7 @@ All fields can be used in filters. Available operators depend on the field type:
 - **string / string (JSON)**: `eq`, `neq`, `in`, `not_in`, `like`, `not_like`, `ilike`, `not_ilike`, `contains`, `not_contains`, `is_null`, `is_not_null`
 - **string (datetime)**: `eq`, `neq`, `gt`, `gte`, `lt`, `lte` — value is an ISO 8601 datetime string
 - **string (ID) / int (ID)**: `eq`, `neq`, `in`, `not_in`, `is_null`, `is_not_null`
-- **array of string tuples**: `eq`, `neq`, `in`, `not_in`, `like`, `not_like`, `ilike`, `not_ilike`, `contains`, `not_contains`, `exists`, `not_exists` — requires `key`
+- **array of string tuples (headers)**: `eq`, `neq`, `in`, `not_in`, `like`, `not_like`, `ilike`, `not_ilike`, `contains`, `not_contains`, `exists`, `not_exists` — requires `key`
 - **int**: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`
 
 #### Value rules
