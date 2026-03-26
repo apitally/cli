@@ -79,10 +79,10 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
 
    Narrow down fields and use filters as much as possible to avoid fetching unnecessarily large volumes of data. Refetching data later (e.g. with more fields) replaces existing records in DuckDB and does not create duplicates.
 
-6. **Query with SQL**:
+6. **Query with SQL** — **CRITICAL: The DuckDB database is persistent and retains data from previous fetches, including other sessions. You MUST filter your SQL queries to match the scope of your current investigation.** Always include `WHERE` conditions on `app_id`, `timestamp`, and any other relevant fields. Without these filters, results will include unrelated data and will be **wrong**.
 
    ```
-   npx @apitally/cli sql "SELECT method, path, status_code, COUNT(*) as n FROM request_logs WHERE status_code >= 400 GROUP BY ALL ORDER BY n DESC"
+   npx @apitally/cli sql "SELECT method, path, status_code, COUNT(*) as n FROM request_logs WHERE app_id = <app-id> AND timestamp >= '2026-03-23T00:00:00Z' AND status_code >= 400 GROUP BY ALL ORDER BY n DESC"
    ```
 
 7. **Iterate** — refine filters, fetch additional fields (headers, bodies, exceptions), or widen the time range as needed.
@@ -106,7 +106,9 @@ SELECT r.timestamp, r.method, r.path, r.status_code, r.response_time_ms,
        c.identifier, c.name as consumer_name
 FROM request_logs r
 JOIN consumers c ON r.app_id = c.app_id AND r.consumer_id = c.consumer_id
-WHERE c.identifier = 'user@example.com'
+WHERE r.app_id = <app-id>
+  AND r.timestamp >= '<since>'
+  AND c.identifier = 'user@example.com'
 ORDER BY r.timestamp DESC
 ```
 
@@ -118,6 +120,8 @@ SELECT c.identifier, c.name,
        SUM(CASE WHEN r.status_code >= 400 THEN 1 ELSE 0 END) as errors
 FROM request_logs r
 JOIN consumers c ON r.app_id = c.app_id AND r.consumer_id = c.consumer_id
+WHERE r.app_id = <app-id>
+  AND r.timestamp >= '<since>'
 GROUP BY c.identifier, c.name
 ORDER BY errors DESC
 LIMIT 20
@@ -140,7 +144,9 @@ Then group by exception type:
 SELECT exception_type, exception_message, COUNT(*) as count,
        MIN(timestamp) as first_seen, MAX(timestamp) as last_seen
 FROM request_logs
-WHERE exception_type IS NOT NULL
+WHERE app_id = <app-id>
+  AND timestamp >= '<since>'
+  AND exception_type IS NOT NULL
 GROUP BY exception_type, exception_message
 ORDER BY count DESC
 ```
@@ -153,7 +159,9 @@ Headers are stored as arrays of `STRUCT(name VARCHAR, value VARCHAR)`. Use DuckD
 SELECT timestamp, method, path,
        [s.value FOR s IN request_headers IF lower(s.name) = 'content-type'][1] as content_type
 FROM request_logs
-WHERE request_headers IS NOT NULL
+WHERE app_id = <app-id>
+  AND timestamp >= '<since>'
+  AND request_headers IS NOT NULL
 LIMIT 20
 ```
 
@@ -165,7 +173,9 @@ Body fields (`request_body_json`, `response_body_json`) are JSON. Use DuckDB JSO
 SELECT timestamp, method, path,
        response_body_json->>'error' as error_message
 FROM request_logs
-WHERE response_body_json IS NOT NULL
+WHERE app_id = <app-id>
+  AND timestamp >= '<since>'
+  AND response_body_json IS NOT NULL
   AND (response_body_json->>'error') IS NOT NULL
 ```
 
