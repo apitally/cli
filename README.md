@@ -36,7 +36,7 @@ The CLI can be used with `npx`, no installation required:
 npx @apitally/cli <command>
 ```
 
-If you wish to install the binary directly, use the standalone installer script:
+If you wish to use the `apitally` binary directly, install it with the standalone installer script:
 
 ```shell
 # On macOS and Linux
@@ -79,14 +79,16 @@ You can also set the API key via the `APITALLY_API_KEY` environment variable or 
 | `apps`            | List all apps in your team                      |
 | `consumers`       | List consumers for an app                       |
 | `request-logs`    | Fetch request log data for an app               |
-| `request-details` | Fetch details for a specific request            |
+| `request-details` | Fetch full details for a specific request       |
 | `sql`             | Run SQL queries against a local DuckDB database |
 
-Commands that fetch data from the API output NDJSON to stdout by default. They accept a `--db` flag to write data to a local DuckDB database instead, which can then be queried with the `sql` command. The database defaults to `~/.apitally/data.duckdb` if no other path is specified.
+All commands output NDJSON to stdout by default. Use the `--db` flag to write data to a local DuckDB database instead, which can then be queried with the `sql` command. The database defaults to `~/.apitally/data.duckdb` if no other path is specified.
 
-Run `npx @apitally/cli --help` or `npx @apitally/cli <command> --help` for detailed usage information.
+Run `npx @apitally/cli --help` for detailed usage information.
 
 For a full command reference, see [skills/apitally-cli/references/commands.md](skills/apitally-cli/references/commands.md).
+
+For DuckDB table schemas, see [skills/apitally-cli/references/tables.md](skills/apitally-cli/references/tables.md).
 
 ## Exit codes
 
