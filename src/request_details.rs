@@ -16,6 +16,7 @@ struct RequestDetailsResponse {
     method: String,
     path: Option<String>,
     url: String,
+    consumer_id: Option<i64>,
     request_headers: Vec<(String, String)>,
     request_size_bytes: i64,
     request_body_json: Option<String>,
@@ -115,35 +116,9 @@ fn write_request_details_to_db(
     let exception = data.exception.as_ref();
 
     conn.execute(
-        "INSERT INTO request_logs (
-            app_id, timestamp, request_uuid, env, method, path, url,
-            request_headers, request_size_bytes, request_body_json,
-            status_code, response_time_ms, response_headers, response_size_bytes,
-            response_body_json, client_ip, client_country_iso_code,
-            exception_type, exception_message, exception_stacktrace,
-            sentry_event_id, trace_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT (app_id, request_uuid) DO UPDATE SET
-            timestamp = excluded.timestamp,
-            env = excluded.env,
-            method = excluded.method,
-            path = excluded.path,
-            url = excluded.url,
-            request_headers = excluded.request_headers,
-            request_size_bytes = excluded.request_size_bytes,
-            request_body_json = excluded.request_body_json,
-            status_code = excluded.status_code,
-            response_time_ms = excluded.response_time_ms,
-            response_headers = excluded.response_headers,
-            response_size_bytes = excluded.response_size_bytes,
-            response_body_json = excluded.response_body_json,
-            client_ip = excluded.client_ip,
-            client_country_iso_code = excluded.client_country_iso_code,
-            exception_type = excluded.exception_type,
-            exception_message = excluded.exception_message,
-            exception_stacktrace = excluded.exception_stacktrace,
-            sentry_event_id = excluded.sentry_event_id,
-            trace_id = excluded.trace_id",
+        "INSERT OR REPLACE INTO request_logs VALUES (
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        )",
         duckdb::params![
             app_id,
             &data.timestamp,
@@ -152,6 +127,7 @@ fn write_request_details_to_db(
             &data.method,
             &data.path,
             &data.url,
+            data.consumer_id,
             &request_headers,
             data.request_size_bytes,
             &data.request_body_json,
@@ -240,7 +216,9 @@ pub fn run(
     let api_base_url = resolve_api_base_url(api_base_url);
     let db = db.map(|p| open_db(p).map(|c| (p, c))).transpose()?;
 
-    let url = format!("{api_base_url}/v1/apps/{app_id}/request-logs/{request_uuid}");
+    let url = format!(
+        "{api_base_url}/v1/apps/{app_id}/request-logs/{request_uuid}?include_consumer_id=true"
+    );
     let mut response = api_get(&url, &api_key, &[])?;
     let data: RequestDetailsResponse = response.body_mut().read_json()?;
 
@@ -276,10 +254,11 @@ mod tests {
             "timestamp": "2025-01-01T00:00:00Z",
             "request_uuid": "abc-123",
             "env": "prod",
-            "consumer": "user-1",
             "method": "GET",
             "path": "/test",
             "url": "https://example.com/test",
+            "consumer": "user-1",
+            "consumer_id": 42,
             "status_code": 200,
             "request_size_bytes": 0,
             "response_size_bytes": 1234,
@@ -333,6 +312,7 @@ mod tests {
                 "GET",
                 format!("/v1/apps/{app_id}/request-logs/{request_uuid}").as_str(),
             )
+            .match_query(mockito::Matcher::Any)
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(sample_request_details_json())
@@ -371,17 +351,6 @@ mod tests {
         let mock = mock_request_details_endpoint(&mut server, 1, "abc-123");
         let (_dir, db_path) = temp_db();
 
-        // Pre-insert a row with consumer_id to verify the upsert preserves it
-        let conn = open_db(&db_path).unwrap();
-        ensure_request_logs_table(&conn).unwrap();
-        conn.execute(
-            "INSERT INTO request_logs (app_id, request_uuid, timestamp, method, url, consumer_id) \
-             VALUES (1, 'abc-123', '2025-01-01T00:00:00Z', 'GET', '/old', 42)",
-            [],
-        )
-        .unwrap();
-        drop(conn);
-
         run(
             1,
             "abc-123",
@@ -395,9 +364,9 @@ mod tests {
 
         let conn = open_db(&db_path).unwrap();
 
-        let (method, url, trace_id, consumer_id): (String, String, Option<String>, Option<i32>) =
+        let (method, url, consumer_id, trace_id): (String, String, Option<i64>, Option<String>) =
             conn.query_row(
-                "SELECT method, url, trace_id, consumer_id FROM request_logs \
+                "SELECT method, url, consumer_id, trace_id FROM request_logs \
                  WHERE app_id = 1 AND request_uuid = 'abc-123'",
                 [],
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
