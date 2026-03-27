@@ -50,7 +50,7 @@ fn fetch_consumers_page(
     Ok(page)
 }
 
-fn ensure_consumers_table(conn: &duckdb::Connection) -> Result<()> {
+pub(crate) fn ensure_consumers_table(conn: &duckdb::Connection) -> Result<()> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS consumers (
             app_id INTEGER NOT NULL,

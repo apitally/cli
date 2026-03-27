@@ -42,6 +42,7 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
 - `request-logs <app-id> --since <dt> [--until <dt>] [--fields <json>] [--filters <json>] [--limit <n>] [--db [<path>]]` -- fetch request logs (max 1,000,000 rows at once)
 - `request-details <app-id> <request-uuid> [--db [<path>]]` -- fetch full details for a single request (including headers, payloads, exception info, application logs, and spans)
 - `sql "<query>" [--db <path>]` -- run SQL against local DuckDB
+- `reset-db [--db <path>]` -- drop and recreate all tables in local DuckDB
 
 ## Workflow
 

@@ -37,7 +37,7 @@ fn fetch_apps(api_key: &str, api_base_url: &str) -> Result<Vec<AppItem>> {
     Ok(apps.data)
 }
 
-fn ensure_apps_tables(conn: &duckdb::Connection) -> Result<()> {
+pub(crate) fn ensure_apps_tables(conn: &duckdb::Connection) -> Result<()> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS apps (
             app_id INTEGER NOT NULL,

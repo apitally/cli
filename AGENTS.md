@@ -124,3 +124,4 @@ Inline `#[cfg(test)] mod tests` in each source file. Run with `cargo test`.
 - Keep user-facing output concise
 - Use inline comments sparingly — only to explain non-obvious intent
 - When changing CLI commands, flags, output format, or DuckDB schemas, update the agent skill in `skills/apitally-cli/` (including its `references/` docs) to reflect those changes
+- Keep `README.md` and `AGENTS.md` up to date with the latest changes

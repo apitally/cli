@@ -199,3 +199,13 @@ Example output:
 {"timestamp":"2026-01-01T00:16:00.000Z","method":"POST","path":"/users","status_code":500}
 {"timestamp":"2026-01-01T00:15:00.000Z","method":"GET","path":"/users/{userId}","status_code":404}
 ```
+
+## `reset-db`
+
+```
+npx @apitally/cli reset-db [--db <path>]
+```
+
+Drop and recreate all tables in the local DuckDB database. Use this to clear all stored data and start fresh.
+
+- `--db`: Path to DuckDB database

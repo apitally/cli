@@ -81,6 +81,7 @@ You can also set the API key via the `APITALLY_API_KEY` environment variable or 
 | `request-logs`    | Fetch request log data for an app               |
 | `request-details` | Fetch full details for a specific request       |
 | `sql`             | Run SQL queries against a local DuckDB database |
+| `reset-db`        | Drop and recreate all tables in local DuckDB    |
 
 All commands output NDJSON to stdout by default. Use the `--db` flag to write data to a local DuckDB database instead, which can then be queried with the `sql` command. The database defaults to `~/.apitally/data.duckdb` if no other path is specified.
 

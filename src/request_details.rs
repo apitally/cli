@@ -64,7 +64,7 @@ struct SpanItem {
     attributes: serde_json::Value,
 }
 
-fn ensure_application_logs_table(conn: &duckdb::Connection) -> Result<()> {
+pub(crate) fn ensure_application_logs_table(conn: &duckdb::Connection) -> Result<()> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS application_logs (
             app_id INTEGER NOT NULL,
@@ -80,7 +80,7 @@ fn ensure_application_logs_table(conn: &duckdb::Connection) -> Result<()> {
     Ok(())
 }
 
-fn ensure_spans_table(conn: &duckdb::Connection) -> Result<()> {
+pub(crate) fn ensure_spans_table(conn: &duckdb::Connection) -> Result<()> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS spans (
             app_id INTEGER NOT NULL,

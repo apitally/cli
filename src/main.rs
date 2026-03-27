@@ -3,6 +3,7 @@ mod auth;
 mod consumers;
 mod request_details;
 mod request_logs;
+mod reset_db;
 mod sql;
 mod utils;
 mod whoami;
@@ -192,6 +193,15 @@ enum Command {
         #[arg(long)]
         db: Option<PathBuf>,
     },
+
+    /// Drop and recreate all tables in the local DuckDB database
+    ResetDb {
+        /// Path to DuckDB database file
+        ///
+        /// Defaults to ~/.apitally/data.duckdb.
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
 }
 
 fn main() {
@@ -316,6 +326,10 @@ fn run(cli: Cli) -> Result<()> {
             };
             sql::run(&query, &db, std::io::stdout().lock())
         }
+        Command::ResetDb { db } => {
+            let db = db.map_or_else(utils::default_db_path, Ok)?;
+            reset_db::run(&db)
+        }
     }
 }
 
@@ -394,6 +408,18 @@ mod tests {
                 .unwrap()
                 .command,
             Command::Sql { db: None, .. }
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["apitally", "reset-db"])
+                .unwrap()
+                .command,
+            Command::ResetDb { db: None }
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["apitally", "reset-db", "--db", "test.duckdb"])
+                .unwrap()
+                .command,
+            Command::ResetDb { db: Some(_) }
         ));
 
         // --db without a value should parse to Some(None)
