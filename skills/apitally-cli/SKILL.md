@@ -3,10 +3,8 @@ name: apitally-cli
 description: >
   Retrieve and investigate API request log data from Apitally. Fetches request logs,
   consumers, and app metadata via the Apitally CLI, stores data in a local
-  DuckDB database, and runs SQL queries to investigate issues. Use when the user
-  wants to investigate API issues, trace a consumer's activity, or inspect
-  request/response details. Also use when the user mentions Apitally, the Apitally CLI,
-  or API request logs, or when asked to set up or authenticate with the Apitally CLI.
+  DuckDB database, and runs SQL queries to investigate issues or answer questions.
+  Use when the user mentions Apitally, the Apitally CLI, API request logs, or API consumers.
 ---
 
 # Apitally CLI
@@ -44,35 +42,37 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
 - `sql "<query>" [--db <path>]` -- run SQL against local DuckDB
 - `reset-db [--db <path>]` -- drop and recreate all tables in local DuckDB
 
-## Workflow
+## Investigation Workflow
 
 1. **Check authentication** — run `npx @apitally/cli whoami`. If it fails, ask the user to provide their Apitally API key or run `npx @apitally/cli auth` themselves. Explain that API keys can be created in the Apitally dashboard under Settings > API keys (https://app.apitally.io/settings/api-keys). If the user provides a key, run `npx @apitally/cli auth --api-key <key>` to store it.
 
-2. **Identify the app** — run `npx @apitally/cli apps` to list apps and get their IDs. If there is more than one app, and the correct app can't be inferred from the user's messages, ask the user which app they mean.
+2. **Identify the app** — run `npx @apitally/cli apps` to list apps and get their IDs. If there is more than one app, and the correct app can't be inferred from the user's messages, ask the user which app they mean. Use the app ID consistently for all commands and SQL `WHERE` conditions throughout the investigation.
 
-3. **Determine if consumers are involved** — decide which scenario applies:
+3. **Determine the time range** — check if the user specified a time range (e.g. "last 24 hours", "since Monday", a specific date). If not, default to the last 7 days. Use this time range consistently for `--requests-since` / `--since` / `--until` flags and SQL `WHERE` conditions throughout the investigation.
+
+4. **Determine if consumers are involved** — decide which scenario applies:
    - **(a) Specific consumer(s)**: the user is asking about specific consumers (e.g. by email, name, or group). Fetch consumers first, then query to find the matching `consumer_id`, then use it as a filter when fetching request logs.
    - **(b) Consumer context needed**: the investigation involves consumers but not specific ones known upfront (e.g. "which consumers cause the most errors"). Fetch consumers into DuckDB for later JOINs with request logs.
    - **(c) No consumer involvement**: skip fetching consumers.
 
-4. **Fetch consumers** into DuckDB (only if scenario (a) or (b) applies):
+5. **Fetch consumers** into DuckDB using the `consumers` command (only if scenario (a) or (b) applies):
 
    ```
-   npx @apitally/cli consumers <app-id> --db
+   npx @apitally/cli consumers <app-id> [--requests-since "<since>"] --db
    ```
 
    For scenario (a), query to find the consumer IDs:
 
    ```
-   npx @apitally/cli sql "SELECT consumer_id, identifier, name, \"group\" FROM consumers WHERE identifier ILIKE '%@example.com'"
+   npx @apitally/cli sql "SELECT consumer_id, identifier, name, \"group\" FROM consumers WHERE app_id = <app-id> AND identifier ILIKE '%@example.com'"
    ```
 
-5. **Fetch request logs** into DuckDB with time range, fields, and filters tailored to the investigation:
+6. **Fetch request logs** into DuckDB using the `request-logs` command with time range, fields, and filters tailored to the investigation. Always read the [command reference](references/commands.md) for available fields and filters.
 
    ```
-   npx @apitally/cli request-logs <app-id> --since "2026-03-23T00:00:00Z" \
-     --fields '["timestamp","method","path","url","status_code","consumer_id"]' \
-     --filters '[{"field":"status_code","op":"gte","value":400}]' \
+   npx @apitally/cli request-logs <app-id> --since "<since>" \
+     --fields '<json-array-of-field-names>' \
+     --filters '<json-array-of-filter-objects>' \
      --db
    ```
 
@@ -80,17 +80,17 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
 
    Narrow down fields and use filters as much as possible to avoid fetching unnecessarily large volumes of data. Refetching data later (e.g. with more fields) replaces existing records in DuckDB and does not create duplicates.
 
-6. **Query with SQL** — **CRITICAL: The DuckDB database is persistent and retains data from previous fetches, including other sessions. You MUST filter your SQL queries to match the scope of your current investigation.** Always include `WHERE` conditions on `app_id`, `timestamp`, and any other relevant fields. Without these filters, results will include unrelated data and will be **wrong**.
+7. **Query DuckDB** using the `sql` command — **CRITICAL: The DuckDB database is persistent and retains data from previous fetches, including other sessions. You MUST filter your SQL queries to match the scope of your current investigation.** Always include `WHERE` conditions on `app_id`, `timestamp`, and any other relevant fields. Without these filters, results will include unrelated data and will be **wrong**.
 
    ```
-   npx @apitally/cli sql "SELECT method, path, status_code, COUNT(*) as n FROM request_logs WHERE app_id = <app-id> AND timestamp >= '2026-03-23T00:00:00Z' AND status_code >= 400 GROUP BY ALL ORDER BY n DESC"
+   npx @apitally/cli sql "SELECT method, path, status_code, COUNT(*) as n FROM request_logs WHERE app_id = <app-id> AND timestamp >= '<since>' AND status_code >= 400 GROUP BY ALL ORDER BY n DESC"
    ```
 
-7. **Iterate** — refine filters, fetch additional fields (headers, bodies, exceptions), or widen the time range as needed.
+   Read the [DuckDB schema reference](references/tables.md) for available tables, columns and relationships.
+
+8. **Iterate if needed** — refine filters, fetch additional fields (headers, bodies, exceptions), or widen the time range as needed.
 
 ## Investigation Patterns
-
-For DuckDB table schemas, see [references/tables.md](references/tables.md).
 
 ### Inspect a specific request
 
@@ -109,6 +109,7 @@ FROM request_logs r
 JOIN consumers c ON r.app_id = c.app_id AND r.consumer_id = c.consumer_id
 WHERE r.app_id = <app-id>
   AND r.timestamp >= '<since>'
+  AND r.timestamp < '<until>'
   AND c.identifier = 'user@example.com'
 ORDER BY r.timestamp DESC
 ```
@@ -133,7 +134,7 @@ LIMIT 20
 Fetch with exception fields first:
 
 ```
-npx @apitally/cli request-logs <app-id> --since "2026-03-23T00:00:00Z" \
+npx @apitally/cli request-logs <app-id> --since "<since>" \
   --fields '["timestamp","request_uuid","method","path","status_code","exception_type","exception_message","exception_stacktrace"]' \
   --filters '[{"field":"status_code","op":"eq","value":500}]' \
   --db
