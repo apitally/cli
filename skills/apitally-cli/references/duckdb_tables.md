@@ -58,12 +58,12 @@ CREATE TABLE request_logs (
     consumer_id             INTEGER,            -- references consumers.consumer_id
     request_headers         STRUCT(name VARCHAR, value VARCHAR)[],
     request_size_bytes      BIGINT,
-    request_body_json       JSON,
+    request_body_json       JSON,               -- max 50 KB, null if too large
     status_code             INTEGER,
     response_time_ms        INTEGER,
     response_headers        STRUCT(name VARCHAR, value VARCHAR)[],
     response_size_bytes     BIGINT,
-    response_body_json      JSON,
+    response_body_json      JSON,               -- max 50 KB, null if too large
     client_ip               VARCHAR,
     client_country_iso_code VARCHAR,
     exception_type          VARCHAR,
@@ -122,35 +122,3 @@ Populated by the `request-details` command when using `--db`.
 - `request_logs.env` matches `app_envs.name` (string, not a foreign key to `app_env_id`)
 - `application_logs.request_uuid` references `request_logs.request_uuid` (join on both `app_id` and `request_uuid`)
 - `spans.request_uuid` references `request_logs.request_uuid` (join on both `app_id` and `request_uuid`)
-
-## Special Types
-
-### Headers (`STRUCT(name VARCHAR, value VARCHAR)[]`)
-
-Headers are arrays of structs with `name` and `value` fields. Use DuckDB list comprehensions:
-
-```sql
--- Extract a specific header value
-[s.value FOR s IN request_headers IF lower(s.name) = 'content-type'][1]
-
--- Check if a header exists
-len([s FOR s IN request_headers IF lower(s.name) = 'authorization']) > 0
-```
-
-### JSON body fields (`JSON`)
-
-`request_body_json` and `response_body_json` are `JSON` columns. Use DuckDB JSON operators. Note: `->>` has low operator precedence, so always wrap in parentheses when used in WHERE clauses (after AND/OR).
-
-```sql
--- Extract a string field
-response_body_json->>'error'
-
--- Extract a nested field
-response_body_json->'user'->>'email'
-
--- Extract from an array (0-indexed)
-response_body_json->'items'->>0
-
--- Use in WHERE (parentheses required)
-WHERE (response_body_json->>'status') = 'failed'
-```

@@ -86,7 +86,7 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
    npx @apitally/cli sql "SELECT method, path, status_code, COUNT(*) as n FROM request_logs WHERE app_id = <app-id> AND timestamp >= '<since>' AND status_code >= 400 GROUP BY ALL ORDER BY n DESC"
    ```
 
-   Read the [DuckDB schema reference](references/tables.md) for available tables, columns and relationships.
+   Read the [DuckDB schema reference](references/duckdb_tables.md) for available tables, columns and relationships.
 
 8. **Iterate if needed** — refine filters, fetch additional fields (headers, bodies, exceptions), or widen the time range as needed.
 
@@ -155,9 +155,10 @@ ORDER BY count DESC
 
 ### Query headers
 
-Headers are stored as arrays of `STRUCT(name VARCHAR, value VARCHAR)`. Use DuckDB list comprehensions:
+Headers are stored as `STRUCT(name VARCHAR, value VARCHAR)[]`. Use DuckDB list comprehensions:
 
 ```sql
+-- Extract a specific header value
 SELECT timestamp, method, path,
        [s.value FOR s IN request_headers IF lower(s.name) = 'content-type'][1] as content_type
 FROM request_logs
@@ -165,21 +166,32 @@ WHERE app_id = <app-id>
   AND timestamp >= '<since>'
   AND request_headers IS NOT NULL
 LIMIT 20
+
+-- Filter by header existence
+SELECT timestamp, method, path
+FROM request_logs
+WHERE app_id = <app-id>
+  AND timestamp >= '<since>'
+  AND len([s FOR s IN request_headers IF lower(s.name) = 'authorization']) > 0
 ```
 
 ### Query JSON body fields
 
-Body fields (`request_body_json`, `response_body_json`) are JSON. Use DuckDB JSON operators (parentheses required around `->>` in WHERE clauses due to operator precedence):
+Body fields (`request_body_json`, `response_body_json`) are of type `JSON`. Use DuckDB JSON operators and functions.
+
+**Note:** Request/response bodies larger than 50 KB are not captured by the SDKs and will be `NULL`.
 
 ```sql
 SELECT timestamp, method, path,
-       response_body_json->>'error' as error_message
+       response_body_json->>'$.error' as error_message
 FROM request_logs
 WHERE app_id = <app-id>
   AND timestamp >= '<since>'
   AND response_body_json IS NOT NULL
-  AND (response_body_json->>'error') IS NOT NULL
+  AND (response_body_json->>'$.error') IS NOT NULL
 ```
+
+See [references/duckdb_json_functions.md](references/duckdb_json_functions.md) for more JSON functions and examples.
 
 ## Exit Codes
 
@@ -195,4 +207,5 @@ WHERE app_id = <app-id>
 ## References
 
 - [Command reference](references/commands.md) -- full flags, fields, filters, and operators
-- [DuckDB table schemas](references/tables.md) -- column types, relationships, and special types
+- [DuckDB table schemas](references/duckdb_tables.md) -- column types, relationships, and special types
+- [DuckDB JSON functions](references/duckdb_json_functions.md) -- extraction operators, JSONPath, unnesting arrays

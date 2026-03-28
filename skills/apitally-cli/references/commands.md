@@ -187,7 +187,7 @@ Run a SQL query against a local DuckDB database. The query can be passed as an a
 
 - `--db`: Path to DuckDB database
 
-Available tables: `apps`, `app_envs`, `consumers`, `request_logs`, `application_logs`, `spans`. See [tables.md](tables.md) for schemas.
+Available tables: `apps`, `app_envs`, `consumers`, `request_logs`, `application_logs`, `spans`. See [duckdb_tables.md](duckdb_tables.md) for schemas.
 
 **Important:** The database may contain data from previous sessions. Always filter queries by `app_id`, `timestamp`, and other relevant fields to avoid including unrelated data.
 

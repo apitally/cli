@@ -89,7 +89,7 @@ Run `npx @apitally/cli --help` for detailed usage information.
 
 For a full command reference, see [skills/apitally-cli/references/commands.md](skills/apitally-cli/references/commands.md).
 
-For DuckDB table schemas, see [skills/apitally-cli/references/tables.md](skills/apitally-cli/references/tables.md).
+For DuckDB table schemas, see [skills/apitally-cli/references/duckdb_tables.md](skills/apitally-cli/references/duckdb_tables.md).
 
 ## Exit codes
 
