@@ -1,6 +1,7 @@
 mod apps;
 mod auth;
 mod consumers;
+mod endpoints;
 mod request_details;
 mod request_logs;
 mod reset_db;
@@ -82,6 +83,32 @@ enum Command {
         /// Filter to consumers that have made requests since this date/time (ISO 8601)
         #[arg(long)]
         requests_since: Option<String>,
+
+        /// Store results in DuckDB instead of outputting NDJSON
+        ///
+        /// Defaults to ~/.apitally/data.duckdb if no path is given.
+        #[arg(long, num_args = 0..=1)]
+        db: Option<Option<PathBuf>>,
+    },
+
+    /// List endpoints for an app
+    ///
+    /// Outputs newline-delimited JSON (one object per line).
+    /// With --db, inserts rows into the `endpoints` table instead.
+    Endpoints {
+        #[command(flatten)]
+        api: ApiArgs,
+
+        /// App ID
+        app_id: i64,
+
+        /// Filter to HTTP method(s), comma-separated
+        #[arg(long)]
+        method: Option<String>,
+
+        /// Filter to path pattern, supports wildcards (*)
+        #[arg(long)]
+        path: Option<String>,
 
         /// Store results in DuckDB instead of outputting NDJSON
         ///
@@ -181,7 +208,7 @@ enum Command {
 
     /// Run a SQL query against local DuckDB
     ///
-    /// Available tables: apps, app_envs, consumers, request_logs,
+    /// Available tables: apps, app_envs, consumers, endpoints, request_logs,
     /// application_logs, spans.
     Sql {
         /// SQL query to execute (reads from stdin if omitted)
@@ -274,6 +301,24 @@ fn run(cli: Cli) -> Result<()> {
                 std::io::stdout().lock(),
             )
         }
+        Command::Endpoints {
+            api,
+            app_id,
+            method,
+            path,
+            db,
+        } => {
+            let db = utils::resolve_db(db)?;
+            endpoints::run(
+                app_id,
+                method.as_deref(),
+                path.as_deref(),
+                db.as_deref(),
+                api.api_key.as_deref(),
+                api.api_base_url.as_deref(),
+                std::io::stdout().lock(),
+            )
+        }
         Command::RequestLogs {
             api,
             app_id,
@@ -353,6 +398,7 @@ mod tests {
         // Missing required args should fail
         assert!(Cli::try_parse_from(["apitally"]).is_err()); // missing command
         assert!(Cli::try_parse_from(["apitally", "consumers"]).is_err()); // missing app_id
+        assert!(Cli::try_parse_from(["apitally", "endpoints"]).is_err()); // missing app_id
         assert!(Cli::try_parse_from(["apitally", "request-logs", "42"]).is_err()); // missing --since
         assert!(Cli::try_parse_from(["apitally", "request-details", "42"]).is_err()); // missing request_uuid
         assert!(Cli::try_parse_from(["apitally", "sql", "SELECT 1", "--db"]).is_err()); // missing db path
@@ -375,6 +421,12 @@ mod tests {
                 .unwrap()
                 .command,
             Command::Consumers { app_id: 42, .. }
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["apitally", "endpoints", "42"])
+                .unwrap()
+                .command,
+            Command::Endpoints { app_id: 42, .. }
         ));
         assert!(matches!(
             Cli::try_parse_from(["apitally", "request-logs", "42", "--since", "2025-01-01"])

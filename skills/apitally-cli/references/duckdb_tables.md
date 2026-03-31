@@ -1,6 +1,6 @@
 # DuckDB Table Schemas
 
-Tables are created automatically when using the `--db` flag with `apps`, `consumers`, `request-logs`, or `request-details` commands. DuckDB uses a [PostgreSQL-compatible SQL dialect](https://duckdb.org/docs/stable/sql/dialect/overview).
+Tables are created automatically when using the `--db` flag with `apps`, `consumers`, `endpoints`, `request-logs`, or `request-details` commands. DuckDB uses a [PostgreSQL-compatible SQL dialect](https://duckdb.org/docs/stable/sql/dialect/overview).
 
 ## apps
 
@@ -43,6 +43,18 @@ CREATE TABLE consumers (
 ```
 
 The `identifier` is the consumer string set in the application (e.g. email, username, API key name). The `"group"` column name is quoted because it is a reserved word in SQL.
+
+## endpoints
+
+```sql
+CREATE TABLE endpoints (
+    app_id          INTEGER NOT NULL,
+    endpoint_id     INTEGER NOT NULL,
+    method          TEXT NOT NULL,
+    path            TEXT NOT NULL,
+    UNIQUE (app_id, endpoint_id)
+);
+```
 
 ## request_logs
 
@@ -117,6 +129,7 @@ Populated by the `request-details` command when using `--db`.
 ## Relationships
 
 - `request_logs.consumer_id` references `consumers.consumer_id` (join on both `app_id` and `consumer_id`)
+- `endpoints.app_id` references `apps.app_id`
 - `request_logs.app_id` references `apps.app_id`
 - `app_envs.app_id` references `apps.app_id`
 - `request_logs.env` matches `app_envs.name` (string, not a foreign key to `app_env_id`)
