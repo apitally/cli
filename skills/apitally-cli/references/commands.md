@@ -62,6 +62,25 @@ Example NDJSON output (without `--db`):
 {"id":2,"identifier":"alice@example.com","name":"Alice","group":null,"created_at":"2026-01-02T00:00:00Z","last_request_at":"2026-01-02T02:00:00Z"}
 ```
 
+## `endpoints`
+
+```
+npx @apitally/cli endpoints <app-id> [--method <methods>] [--path <pattern>] [--db [<path>]]
+```
+
+List API endpoints for an app, ordered by path and method. Use this to see which endpoints exist for an app. Outputs NDJSON to stdout by default.
+
+- `--method`: Filter to HTTP method(s), comma-separated (e.g. `GET,POST`)
+- `--path`: Filter to path pattern, supports wildcards (`*`)
+- `--db`: Write to `endpoints` table in DuckDB instead of outputting NDJSON to stdout
+
+Example NDJSON output (without `--db`):
+
+```json
+{"id":1,"method":"POST","path":"/v1/users"}
+{"id":2,"method":"GET","path":"/v1/users/{user_id}"}
+```
+
 ## `request-logs`
 
 ```
@@ -187,7 +206,7 @@ Run a SQL query against a local DuckDB database. The query can be passed as an a
 
 - `--db`: Path to DuckDB database
 
-Available tables: `apps`, `app_envs`, `consumers`, `request_logs`, `application_logs`, `spans`. See [duckdb_tables.md](duckdb_tables.md) for schemas.
+Available tables: `apps`, `app_envs`, `consumers`, `endpoints`, `request_logs`, `application_logs`, `spans`. See [duckdb_tables.md](duckdb_tables.md) for schemas.
 
 **Important:** The database may contain data from previous sessions. Always filter queries by `app_id`, `timestamp`, and other relevant fields to avoid including unrelated data.
 

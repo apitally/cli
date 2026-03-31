@@ -78,6 +78,7 @@ You can also set the API key via the `APITALLY_API_KEY` environment variable or 
 | `whoami`          | Check authentication and show team info         |
 | `apps`            | List all apps in your team                      |
 | `consumers`       | List consumers for an app                       |
+| `endpoints`       | List endpoints for an app                       |
 | `request-logs`    | Fetch request log data for an app               |
 | `request-details` | Fetch full details for a specific request       |
 | `sql`             | Run SQL queries against a local DuckDB database |
