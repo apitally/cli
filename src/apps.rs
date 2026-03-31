@@ -106,7 +106,7 @@ pub fn run(
         ensure_apps_tables(&conn)?;
         write_apps_to_db(&conn, &apps)?;
         eprintln!(
-            "{} apps written to table 'apps' in {}...\nDone.",
+            "{} apps written to table 'apps' in {}.\nDone.",
             apps.len(),
             db_path.display(),
         );

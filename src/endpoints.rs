@@ -91,7 +91,7 @@ pub fn run(
         ensure_endpoints_table(&conn)?;
         write_endpoints_to_db(&conn, app_id, &endpoints)?;
         eprintln!(
-            "{} endpoints written to table 'endpoints' in {}...\nDone.",
+            "{} endpoints written to table 'endpoints' in {}.\nDone.",
             endpoints.len(),
             db_path.display(),
         );

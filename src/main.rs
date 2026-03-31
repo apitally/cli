@@ -285,6 +285,22 @@ fn run(cli: Cli) -> Result<()> {
                 std::io::stdout().lock(),
             )
         }
+        Command::Consumers {
+            api,
+            app_id,
+            requests_since,
+            db,
+        } => {
+            let db = utils::resolve_db(db)?;
+            consumers::run(
+                app_id,
+                requests_since.as_deref(),
+                db.as_deref(),
+                api.api_key.as_deref(),
+                api.api_base_url.as_deref(),
+                std::io::stdout().lock(),
+            )
+        }
         Command::Endpoints {
             api,
             app_id,
@@ -297,22 +313,6 @@ fn run(cli: Cli) -> Result<()> {
                 app_id,
                 method.as_deref(),
                 path.as_deref(),
-                db.as_deref(),
-                api.api_key.as_deref(),
-                api.api_base_url.as_deref(),
-                std::io::stdout().lock(),
-            )
-        }
-        Command::Consumers {
-            api,
-            app_id,
-            requests_since,
-            db,
-        } => {
-            let db = utils::resolve_db(db)?;
-            consumers::run(
-                app_id,
-                requests_since.as_deref(),
                 db.as_deref(),
                 api.api_key.as_deref(),
                 api.api_base_url.as_deref(),
