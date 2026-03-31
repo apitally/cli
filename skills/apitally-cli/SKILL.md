@@ -51,18 +51,21 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
 
 3. **Determine the time range** — check if the user specified a time range (e.g. "last 24 hours", "since Monday", a specific date). If not, default to the last 7 days. Use this time range consistently for `--requests-since` / `--since` / `--until` flags and SQL `WHERE` conditions throughout the investigation.
 
-4. **Determine if consumers are involved** — decide which scenario applies:
-   - **(a) Specific consumer(s)**: the user is asking about specific consumers (e.g. by email, name, or group). Fetch consumers first, then query to find the matching `consumer_id`, then use it as a filter when fetching request logs.
-   - **(b) Consumer context needed**: the investigation involves consumers but not specific ones known upfront (e.g. "which consumers cause the most errors"). Fetch consumers into DuckDB for later JOINs with request logs.
-   - **(c) No consumer involvement**: skip fetching consumers.
+4. **Fetch endpoints if needed** — skip this step unless you need to discover available endpoints to filter request logs. Fetch endpoints using the `endpoints` command:
 
-5. **Fetch consumers** into DuckDB using the `consumers` command (only if scenario (a) or (b) applies):
+   ```
+   npx @apitally/cli endpoints <app-id> [--method <methods>] [--path <pattern>]
+   ```
+
+   Use `--method` and/or `--path` to filter (e.g. `--path '*users*'`). Read the NDJSON output to identify relevant endpoints, then use their method/path to filter request logs in step 6.
+
+5. **Fetch consumers if needed** — skip this step if the investigation doesn't involve consumers. Otherwise, fetch consumers into DuckDB using the `consumers` command:
 
    ```
    npx @apitally/cli consumers <app-id> [--requests-since "<since>"] --db
    ```
 
-   For scenario (a), query to find the consumer IDs:
+   If the user is asking about specific consumers (e.g. by email, name, or group), query to find their `consumer_id` and use it as a filter when fetching request logs in step 6:
 
    ```
    npx @apitally/cli sql "SELECT consumer_id, identifier, name, \"group\" FROM consumers WHERE app_id = <app-id> AND identifier ILIKE '%@example.com'"
@@ -77,7 +80,9 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
      --db
    ```
 
-   For scenario (a), add a consumer filter: `{"field":"consumer_id","op":"in","value":[1,2,3]}`
+   If filtering by endpoint, add method/path filters: `[{"field":"method","op":"eq","value":"GET"},{"field":"path","op":"eq","value":"/v1/users/{user_id}"}]`
+
+   If filtering by consumers, add a consumer filter: `[{"field":"consumer_id","op":"in","value":[1,2,3]}]`
 
    Narrow down fields and use filters as much as possible to avoid fetching unnecessarily large volumes of data. Refetching data later (e.g. with more fields) replaces existing records in DuckDB and does not create duplicates.
 
@@ -113,21 +118,6 @@ WHERE r.app_id = <app-id>
   AND r.timestamp < '<until>'
   AND c.identifier = 'user@example.com'
 ORDER BY r.timestamp DESC
-```
-
-### Top consumers by error count
-
-```sql
-SELECT c.identifier, c.name,
-       COUNT(*) as total_requests,
-       SUM(CASE WHEN r.status_code >= 400 THEN 1 ELSE 0 END) as errors
-FROM request_logs r
-JOIN consumers c ON r.app_id = c.app_id AND r.consumer_id = c.consumer_id
-WHERE r.app_id = <app-id>
-  AND r.timestamp >= '<since>'
-GROUP BY c.identifier, c.name
-ORDER BY errors DESC
-LIMIT 20
 ```
 
 ### Exception investigation
