@@ -71,7 +71,7 @@ npx @apitally/cli endpoints <app-id> [--method <methods>] [--path <pattern>] [--
 List API endpoints for an app, ordered by path and method. Use this to see which endpoints exist for an app. Outputs NDJSON to stdout by default.
 
 - `--method`: Filter to HTTP method(s), comma-separated (e.g. `GET,POST`)
-- `--path`: Filter to path pattern, supports wildcards (`*`)
+- `--path`: Filter to path pattern, supports wildcards (e.g. `/v1/*`)
 - `--db`: Write to `endpoints` table in DuckDB instead of outputting NDJSON to stdout
 
 Example NDJSON output (without `--db`):
