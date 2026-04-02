@@ -46,7 +46,7 @@ skills/
 | `apps`            | `GET /v1/apps`                                      |
 | `consumers`       | `GET /v1/apps/{app_id}/consumers`                   |
 | `endpoints`       | `GET /v1/apps/{app_id}/endpoints`                   |
-| `request-logs`    | `POST /v1/apps/{app_id}/request-logs/stream`        |
+| `request-logs`    | `POST /v1/apps/{app_id}/request-logs`               |
 | `request-details` | `GET /v1/apps/{app_id}/request-logs/{request_uuid}` |
 | `sql`             | Local DuckDB                                        |
 

@@ -78,7 +78,7 @@ pub fn run(
     if let Some(limit) = limit {
         body["limit"] = serde_json::json!(limit);
     }
-    let url = format!("{api_base_url}/v1/apps/{app_id}/request-logs/stream");
+    let url = format!("{api_base_url}/v1/apps/{app_id}/request-logs");
     let response = api_post(&url, &api_key, &body)?;
 
     if let Some((db_path, conn)) = &db {
@@ -228,10 +228,7 @@ mod tests {
         body: impl AsRef<[u8]>,
     ) -> mockito::Mock {
         server
-            .mock(
-                "POST",
-                format!("/v1/apps/{app_id}/request-logs/stream").as_str(),
-            )
+            .mock("POST", format!("/v1/apps/{app_id}/request-logs").as_str())
             .with_status(200)
             .with_body(body)
             .create()
