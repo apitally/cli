@@ -14,6 +14,7 @@ src/
   apps.rs               Apps command (fetch, DB write)
   consumers.rs          Consumers command (paginated fetch, DB write)
   endpoints.rs          Endpoints command (fetch, DB write)
+  metrics.rs            Metrics command (Arrow IPC or NDJSON streaming)
   request_logs.rs       Request logs command (Arrow IPC or NDJSON streaming)
   request_details.rs    Request details command (single request fetch, DB write)
   sql.rs                SQL command (query DuckDB, output NDJSON)
@@ -46,6 +47,7 @@ skills/
 | `apps`            | `GET /v1/apps`                                      |
 | `consumers`       | `GET /v1/apps/{app_id}/consumers`                   |
 | `endpoints`       | `GET /v1/apps/{app_id}/endpoints`                   |
+| `metrics`         | `POST /v1/apps/{app_id}/metrics`                    |
 | `request-logs`    | `POST /v1/apps/{app_id}/request-logs`               |
 | `request-details` | `GET /v1/apps/{app_id}/request-logs/{request_uuid}` |
 | `sql`             | Local DuckDB                                        |
