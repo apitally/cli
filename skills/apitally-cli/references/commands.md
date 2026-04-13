@@ -100,6 +100,8 @@ Fetch aggregated metrics for an app. Outputs NDJSON to stdout by default.
 - `--timezone`: Timezone for intervals and to interpret since/until if not tz-aware (defaults to UTC)
 - `--db`: Write to `metrics` table in DuckDB instead of outputting NDJSON to stdout
 
+**Deduplication in DuckDB:** Deletes all existing rows for the same `app_id` within the fetched time range before inserting new data.
+
 ### Available metrics
 
 | Metric                | Type    | Description                            |

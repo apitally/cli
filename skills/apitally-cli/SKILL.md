@@ -1,15 +1,19 @@
 ---
 name: apitally-cli
 description: >
-  Retrieve and investigate API request log data from Apitally. Fetches request logs,
-  consumers, and app metadata via the Apitally CLI, stores data in a local
-  DuckDB database, and runs SQL queries to investigate issues or answer questions.
-  Use when the user mentions Apitally, the Apitally CLI, API request logs, or API consumers.
+  Retrieve and investigate API metrics and request log data from Apitally. Fetches
+  aggregated metrics, request logs, consumers, and app metadata via the Apitally CLI,
+  stores data in a local DuckDB database, and runs SQL queries to investigate issues
+  or answer questions. Use when the user mentions Apitally, the Apitally CLI, API
+  metrics, API request logs, or API consumers.
 ---
 
 # Apitally CLI
 
-The Apitally CLI retrieves API request log data from [Apitally](https://apitally.io) and optionally stores it in a local DuckDB database for investigation with SQL. Each record is an individual API request with method, URL, status code, response time, consumer, headers, payloads, exceptions, and more. Request log retention is **15 days**.
+The Apitally CLI retrieves API metrics and request log data from [Apitally](https://apitally.io) and optionally stores it in a local DuckDB database for investigation with SQL. Two main data sources:
+
+- **Metrics** — pre-aggregated data (request counts, error rates, response time percentiles, throughput). Retention: **30 days** at 1-minute intervals, **13 months** at 30-minute intervals.
+- **Request logs** — individual API requests with method, URL, status code, response time, consumer, headers, payloads, exceptions, traces, and more. Retention: **15 days**.
 
 Run commands with `npx` (no install needed):
 
@@ -52,42 +56,47 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
 
 3. **Determine the time range** — check if the user specified a time range (e.g. "last 24 hours", "since Monday", a specific date). If not, default to the last 7 days. Use this time range consistently for `--requests-since` / `--since` / `--until` flags and SQL `WHERE` conditions throughout the investigation.
 
-4. **Fetch endpoints if needed** — skip this step unless you need to discover available endpoints to filter request logs. Fetch endpoints using the `endpoints` command:
+4. **Fetch supporting data if needed** — skip unless you need endpoint discovery or consumer identification.
+   - **Endpoints**: use `endpoints` to discover available method/path combinations for filtering. Use `--method` and/or `--path` to filter (e.g. `--path '*users*'`).
 
-   ```
-   npx @apitally/cli endpoints <app-id> [--method <methods>] [--path <pattern>]
-   ```
+     ```
+     npx @apitally/cli endpoints <app-id> [--method <methods>] [--path <pattern>]
+     ```
 
-   Use `--method` and/or `--path` to filter (e.g. `--path '*users*'`). Read the NDJSON output to identify relevant endpoints, then use their method/path to filter request logs in step 6.
+   - **Consumers**: use `consumers` to map identifiers (emails, usernames, groups) to `consumer_id` values and vice versa, if the question involves consumers.
 
-5. **Fetch consumers if needed** — skip this step if the investigation doesn't involve consumers. Otherwise, fetch consumers into DuckDB using the `consumers` command:
+     ```
+     npx @apitally/cli consumers <app-id> [--requests-since "<since>"] --db
+     ```
 
-   ```
-   npx @apitally/cli consumers <app-id> [--requests-since "<since>"] --db
-   ```
+     ```
+     npx @apitally/cli sql "SELECT consumer_id, identifier, name, \"group\" FROM consumers WHERE app_id = <app-id> AND identifier ILIKE '%@example.com'"
+     ```
 
-   If the user is asking about specific consumers (e.g. by email, name, or group), query to find their `consumer_id` and use it as a filter when fetching request logs in step 6:
+5. **Fetch data** — choose based on the question. Always read the [command reference](references/commands.md) for available options.
+   - **Metrics** — for questions that can be answered with aggregated metrics: traffic volume, error rates, response time trends, throughput, endpoint comparisons. Use `--group-by` and `--interval` to break down by environment, endpoint, consumer, status code, or time period.
 
-   ```
-   npx @apitally/cli sql "SELECT consumer_id, identifier, name, \"group\" FROM consumers WHERE app_id = <app-id> AND identifier ILIKE '%@example.com'"
-   ```
+     ```
+     npx @apitally/cli metrics <app-id> --since "<since>" \
+       --metrics '["requests","error_rate","response_time_p50","response_time_p95"]' \
+       --group-by '["method","path"]' --interval day --db
+     ```
 
-6. **Fetch request logs** into DuckDB using the `request-logs` command with time range, fields, and filters tailored to the investigation. Always read the [command reference](references/commands.md) for available fields and filters.
+   - **Request logs** — for questions that require individual request data: specific errors, exceptions, headers, payloads, traces, etc. Narrow down fields and use filters to avoid fetching unnecessarily large volumes of data. Refetching replaces existing records in DuckDB (no duplicates).
 
-   ```
-   npx @apitally/cli request-logs <app-id> --since "<since>" \
-     --fields '<json-array-of-field-names>' \
-     --filters '<json-array-of-filter-objects>' \
-     --db
-   ```
+     ```
+     npx @apitally/cli request-logs <app-id> --since "<since>" \
+       --fields '<json-array-of-field-names>' \
+       --filters '<json-array-of-filter-objects>' \
+       --db
+     ```
 
-   If filtering by endpoint, add method/path filters: `[{"field":"method","op":"eq","value":"GET"},{"field":"path","op":"eq","value":"/v1/users/{user_id}"}]`
+     Filter by endpoint: `--filters '[{"field":"method","op":"eq","value":"GET"},{"field":"path","op":"eq","value":"/v1/users/{user_id}"}]'`
+     Filter by consumer: `--filters '[{"field":"consumer_id","op":"in","value":[1,2,3]}]'`
 
-   If filtering by consumers, add a consumer filter: `[{"field":"consumer_id","op":"in","value":[1,2,3]}]`
+   - **Both** — for broad investigations, start with metrics for an overview, then fetch request logs to drill into specifics.
 
-   Narrow down fields and use filters as much as possible to avoid fetching unnecessarily large volumes of data. Refetching data later (e.g. with more fields) replaces existing records in DuckDB and does not create duplicates.
-
-7. **Query DuckDB** using the `sql` command — **CRITICAL: The DuckDB database is persistent and retains data from previous fetches, including other sessions. You MUST filter your SQL queries to match the scope of your current investigation.** Always include `WHERE` conditions on `app_id`, `timestamp`, and any other relevant fields. Without these filters, results will include unrelated data and will be **wrong**.
+6. **Query DuckDB** using the `sql` command — **CRITICAL: The DuckDB database is persistent and retains data from previous fetches, including other sessions. You MUST filter your SQL queries to match the scope of your current investigation.** Always include `WHERE` conditions on `app_id`, `period_start`/`timestamp`, and any other relevant fields. Without these filters, results will include unrelated data and will be **wrong**.
 
    ```
    npx @apitally/cli sql "SELECT method, path, status_code, COUNT(*) as n FROM request_logs WHERE app_id = <app-id> AND timestamp >= '<since>' AND status_code >= 400 GROUP BY ALL ORDER BY n DESC"
@@ -95,13 +104,40 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
 
    Read the [DuckDB schema reference](references/duckdb_tables.md) for available tables, columns and relationships.
 
-8. **Iterate if needed** — refine filters, fetch additional fields (headers, bodies, exceptions), or widen the time range as needed.
+7. **Iterate if needed** — refine filters, fetch additional fields (headers, bodies, exceptions), or widen the time range as needed.
 
 ## Investigation Patterns
 
-### Inspect a specific request
+### Error investigation
 
-Use `request-details` to fetch full details (headers, body, exception, application logs, spans) for a single request:
+Fetch request counts grouped by endpoint and status code to find the most frequent errors:
+
+```
+npx @apitally/cli metrics <app-id> --since "<since>" \
+  --metrics '["requests"]' \
+  --group-by '["method","path","status_code"]' \
+  --filters '[{"field":"status_code","op":"gte","value":400}]' --db
+```
+
+```sql
+SELECT method, path, status_code, sum(requests) as requests_sum
+FROM metrics
+WHERE app_id = <app-id>
+  AND period_start >= '<since>'
+GROUP BY method, path, status_code
+ORDER BY requests_sum DESC
+```
+
+Then fetch request logs for a specific error to investigate further:
+
+```
+npx @apitally/cli request-logs <app-id> --since "<since>" \
+  --fields '["timestamp","request_uuid","url","status_code","response_body_json","exception_type","exception_message"]' \
+  --filters '[{"field":"method","op":"eq","value":"<method>"},{"field":"path","op":"eq","value":"<path>"},{"field":"status_code","op":"eq","value":<status_code>}]' \
+  --limit 5
+```
+
+Use `request-details` to fetch full details (headers, body, exception, application logs, spans) for a specific request:
 
 ```
 npx @apitally/cli request-details <app-id> <request-uuid>
@@ -110,39 +146,14 @@ npx @apitally/cli request-details <app-id> <request-uuid>
 ### Trace a consumer's activity
 
 ```sql
-SELECT r.timestamp, r.method, r.path, r.status_code, r.response_time_ms,
-       c.identifier, c.name as consumer_name
+SELECT r.timestamp, r.method, r.url, r.status_code, r.response_time_ms
 FROM request_logs r
 JOIN consumers c ON r.app_id = c.app_id AND r.consumer_id = c.consumer_id
 WHERE r.app_id = <app-id>
   AND r.timestamp >= '<since>'
   AND r.timestamp < '<until>'
   AND c.identifier = 'user@example.com'
-ORDER BY r.timestamp DESC
-```
-
-### Exception investigation
-
-Fetch with exception fields first:
-
-```
-npx @apitally/cli request-logs <app-id> --since "<since>" \
-  --fields '["timestamp","request_uuid","method","path","status_code","exception_type","exception_message","exception_stacktrace"]' \
-  --filters '[{"field":"status_code","op":"eq","value":500}]' \
-  --db
-```
-
-Then group by exception type:
-
-```sql
-SELECT exception_type, exception_message, COUNT(*) as count,
-       MIN(timestamp) as first_seen, MAX(timestamp) as last_seen
-FROM request_logs
-WHERE app_id = <app-id>
-  AND timestamp >= '<since>'
-  AND exception_type IS NOT NULL
-GROUP BY exception_type, exception_message
-ORDER BY count DESC
+ORDER BY r.timestamp ASC
 ```
 
 ### Query headers
