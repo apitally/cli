@@ -270,7 +270,7 @@ Run a SQL query against a local DuckDB database. The query can be passed as an a
 
 Available tables: `apps`, `app_envs`, `consumers`, `endpoints`, `metrics`, `request_logs`, `application_logs`, `spans`. See [duckdb_tables.md](duckdb_tables.md) for schemas.
 
-**Important:** The database may contain data from previous sessions. Always filter queries by `app_id`, `timestamp`, and other relevant fields to avoid including unrelated data.
+**Important:** The database may contain data from previous sessions. Always filter queries by `app_id`, time (`timestamp` for `request_logs`, `period_start`/`period_end` for `metrics`), and other relevant fields to avoid including unrelated data.
 
 DuckDB uses a [PostgreSQL-compatible SQL dialect](https://duckdb.org/docs/stable/sql/dialect/overview).
 
