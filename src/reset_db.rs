@@ -3,7 +3,7 @@ use std::path::Path;
 use anyhow::Result;
 
 use crate::utils::open_db;
-use crate::{apps, consumers, endpoints, request_details, request_logs};
+use crate::{apps, consumers, endpoints, metrics, request_details, request_logs};
 
 pub fn run(db: &Path) -> Result<()> {
     let conn = open_db(db)?;
@@ -20,6 +20,7 @@ pub fn run(db: &Path) -> Result<()> {
     apps::ensure_apps_tables(&conn)?;
     consumers::ensure_consumers_table(&conn)?;
     endpoints::ensure_endpoints_table(&conn)?;
+    metrics::ensure_metrics_table(&conn)?;
     request_logs::ensure_request_logs_table(&conn)?;
     request_details::ensure_application_logs_table(&conn)?;
     request_details::ensure_spans_table(&conn)?;
@@ -61,6 +62,7 @@ mod tests {
                 "apps",
                 "consumers",
                 "endpoints",
+                "metrics",
                 "request_logs",
                 "spans"
             ]

@@ -81,6 +81,66 @@ Example NDJSON output (without `--db`):
 {"id":2,"method":"GET","path":"/v1/users/{user_id}"}
 ```
 
+## `metrics`
+
+```
+npx @apitally/cli metrics <app-id> --since <datetime> --metrics <json> \
+  [--until <datetime>] [--interval <interval>] [--group-by <json>] \
+  [--filters <json>] [--timezone <tz>] [--db [<path>]]
+```
+
+Fetch aggregated metrics for an app. Outputs NDJSON to stdout by default.
+
+- `--since`: Start of time range, inclusive (ISO 8601, required)
+- `--until`: End of time range, exclusive (ISO 8601, defaults to now)
+- `--metrics`: JSON array of metric names to include (required)
+- `--interval`: Time interval for grouping (`month`, `day`, `hour`, `minute`). When omitted, returns a single row per group for the entire time range
+- `--group-by`: JSON array of field names to group by, in addition to time period
+- `--filters`: JSON array of filter objects (see below)
+- `--timezone`: Timezone for intervals and to interpret since/until if not tz-aware (defaults to UTC)
+- `--db`: Write to `metrics` table in DuckDB instead of outputting NDJSON to stdout
+
+### Available metrics
+
+| Metric                | Type    | Description                            |
+| --------------------- | ------- | -------------------------------------- |
+| `requests`            | integer | Total request count                    |
+| `requests_per_minute` | float   | Requests per minute                    |
+| `bytes_received`      | integer | Total bytes received                   |
+| `bytes_sent`          | integer | Total bytes sent                       |
+| `client_errors`       | integer | 4xx errors (excluding expected errors) |
+| `server_errors`       | integer | 5xx errors (excluding expected errors) |
+| `error_rate`          | float   | Ratio of errors to total requests      |
+| `response_time_p50`   | integer | 50th percentile response time (ms)     |
+| `response_time_p75`   | integer | 75th percentile response time (ms)     |
+| `response_time_p95`   | integer | 95th percentile response time (ms)     |
+
+### Group-by fields
+
+`env`, `consumer_id`, `method`, `path`, `status_code`
+
+### Filters
+
+Pass `--filters` as a JSON array of filter objects. Supported fields and operators:
+
+- **string fields** (`env`, `method`, `path`): `eq`, `neq`, `in`, `not_in`, `like`, `not_like`, `contains`, `not_contains`
+- **numeric fields** (`consumer_id`, `status_code`): `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`, `is_null`, `is_not_null`
+
+Filter examples:
+
+```json
+[{"field":"method","op":"eq","value":"GET"}]
+[{"field":"status_code","op":"gte","value":400}]
+[{"field":"path","op":"like","value":"/v1/users/%"}]
+```
+
+Example NDJSON output (without `--db`):
+
+```json
+{"period_start":"2026-01-01T00:00:00Z","period_end":"2026-01-01T01:00:00Z","env":"prod","requests":1234,"error_rate":0.02}
+{"period_start":"2026-01-01T01:00:00Z","period_end":"2026-01-01T02:00:00Z","env":"prod","requests":987,"error_rate":0.01}
+```
+
 ## `request-logs`
 
 ```
@@ -206,7 +266,7 @@ Run a SQL query against a local DuckDB database. The query can be passed as an a
 
 - `--db`: Path to DuckDB database
 
-Available tables: `apps`, `app_envs`, `consumers`, `endpoints`, `request_logs`, `application_logs`, `spans`. See [duckdb_tables.md](duckdb_tables.md) for schemas.
+Available tables: `apps`, `app_envs`, `consumers`, `endpoints`, `metrics`, `request_logs`, `application_logs`, `spans`. See [duckdb_tables.md](duckdb_tables.md) for schemas.
 
 **Important:** The database may contain data from previous sessions. Always filter queries by `app_id`, `timestamp`, and other relevant fields to avoid including unrelated data.
 

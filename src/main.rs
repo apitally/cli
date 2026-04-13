@@ -2,6 +2,7 @@ mod apps;
 mod auth;
 mod consumers;
 mod endpoints;
+mod metrics;
 mod request_details;
 mod request_logs;
 mod reset_db;
@@ -117,6 +118,73 @@ enum Command {
         db: Option<Option<PathBuf>>,
     },
 
+    /// Retrieve aggregated metrics for an app
+    ///
+    /// Outputs newline-delimited JSON (one object per line).
+    /// With --db, inserts rows into the `metrics` table instead.
+    Metrics {
+        #[command(flatten)]
+        api: ApiArgs,
+
+        /// App ID
+        app_id: i64,
+
+        /// Since date/time (ISO 8601)
+        #[arg(long)]
+        since: String,
+
+        /// Until date/time (ISO 8601, defaults to now)
+        #[arg(long)]
+        until: Option<String>,
+
+        /// JSON array of metric names to include
+        ///
+        /// Available metrics: requests, requests_per_minute, bytes_received,
+        /// bytes_sent, client_errors, server_errors, error_rate,
+        /// response_time_p50, response_time_p75, response_time_p95.
+        #[arg(long)]
+        metrics: String,
+
+        /// Time interval for grouping
+        ///
+        /// Available intervals: month, day, hour, minute.
+        /// When omitted, returns a single row per group for the entire time range.
+        #[arg(long)]
+        interval: Option<String>,
+
+        /// JSON array of field names to group by (in addition to time interval)
+        ///
+        /// Available fields: env, consumer_id, method, path, status_code.
+        #[arg(long)]
+        group_by: Option<String>,
+
+        /// JSON array of filter objects with "field", "op", and "value" keys
+        ///
+        /// Supported fields: env, consumer_id, method, path, status_code.
+        ///
+        /// Supported operators:
+        ///   string fields (env, method, path): eq, neq, in, not_in, like, not_like, contains, not_contains
+        ///   numeric fields (consumer_id, status_code): eq, neq, gt, gte, lt, lte, in, not_in, is_null, is_not_null
+        ///
+        /// Examples:
+        ///   [{"field":"method","op":"eq","value":"GET"}]
+        ///   [{"field":"status_code","op":"gte","value":400}]
+        #[arg(long)]
+        filters: Option<String>,
+
+        /// Timezone for intervals and to interpret since/until if not tz-aware
+        ///
+        /// Defaults to UTC. Example: America/New_York.
+        #[arg(long)]
+        timezone: Option<String>,
+
+        /// Store results in DuckDB instead of outputting NDJSON
+        ///
+        /// Defaults to ~/.apitally/data.duckdb if no path is given.
+        #[arg(long, num_args = 0..=1)]
+        db: Option<Option<PathBuf>>,
+    },
+
     /// Retrieve request log data for an app
     ///
     /// Outputs newline-delimited JSON (one object per line).
@@ -208,8 +276,8 @@ enum Command {
 
     /// Run a SQL query against local DuckDB
     ///
-    /// Available tables: apps, app_envs, consumers, endpoints, request_logs,
-    /// application_logs, spans.
+    /// Available tables: apps, app_envs, consumers, endpoints, metrics,
+    /// request_logs, application_logs, spans.
     Sql {
         /// SQL query to execute (reads from stdin if omitted)
         query: Option<String>,
@@ -319,6 +387,34 @@ fn run(cli: Cli) -> Result<()> {
                 std::io::stdout().lock(),
             )
         }
+        Command::Metrics {
+            api,
+            app_id,
+            since,
+            until,
+            metrics,
+            interval,
+            group_by,
+            filters,
+            timezone,
+            db,
+        } => {
+            let db = utils::resolve_db(db)?;
+            metrics::run(
+                app_id,
+                &since,
+                until.as_deref(),
+                &metrics,
+                interval.as_deref(),
+                group_by.as_deref(),
+                filters.as_deref(),
+                timezone.as_deref(),
+                db.as_deref(),
+                api.api_key.as_deref(),
+                api.api_base_url.as_deref(),
+                std::io::stdout().lock(),
+            )
+        }
         Command::RequestLogs {
             api,
             app_id,
@@ -399,6 +495,10 @@ mod tests {
         assert!(Cli::try_parse_from(["apitally"]).is_err()); // missing command
         assert!(Cli::try_parse_from(["apitally", "consumers"]).is_err()); // missing app_id
         assert!(Cli::try_parse_from(["apitally", "endpoints"]).is_err()); // missing app_id
+        assert!(Cli::try_parse_from(["apitally", "metrics", "42"]).is_err()); // missing --since and --metrics
+        assert!(
+            Cli::try_parse_from(["apitally", "metrics", "42", "--since", "2025-01-01"]).is_err()
+        ); // missing --metrics
         assert!(Cli::try_parse_from(["apitally", "request-logs", "42"]).is_err()); // missing --since
         assert!(Cli::try_parse_from(["apitally", "request-details", "42"]).is_err()); // missing request_uuid
         assert!(Cli::try_parse_from(["apitally", "sql", "SELECT 1", "--db"]).is_err()); // missing db path
@@ -427,6 +527,20 @@ mod tests {
                 .unwrap()
                 .command,
             Command::Endpoints { app_id: 42, .. }
+        ));
+        assert!(matches!(
+            Cli::try_parse_from([
+                "apitally",
+                "metrics",
+                "42",
+                "--since",
+                "2025-01-01",
+                "--metrics",
+                r#"["requests","error_rate"]"#
+            ])
+            .unwrap()
+            .command,
+            Command::Metrics { app_id: 42, .. }
         ));
         assert!(matches!(
             Cli::try_parse_from(["apitally", "request-logs", "42", "--since", "2025-01-01"])

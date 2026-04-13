@@ -1,6 +1,6 @@
 # DuckDB Table Schemas
 
-Tables are created automatically when using the `--db` flag with `apps`, `consumers`, `endpoints`, `request-logs`, or `request-details` commands. DuckDB uses a [PostgreSQL-compatible SQL dialect](https://duckdb.org/docs/stable/sql/dialect/overview).
+Tables are created automatically when using the `--db` flag with `apps`, `consumers`, `endpoints`, `metrics`, `request-logs`, or `request-details` commands. DuckDB uses a [PostgreSQL-compatible SQL dialect](https://duckdb.org/docs/stable/sql/dialect/overview).
 
 ## apps
 
@@ -55,6 +55,33 @@ CREATE TABLE endpoints (
     UNIQUE (app_id, endpoint_id)
 );
 ```
+
+## metrics
+
+```sql
+CREATE TABLE metrics (
+    app_id              INTEGER NOT NULL,
+    period_start        TIMESTAMPTZ NOT NULL,
+    period_end          TIMESTAMPTZ NOT NULL,
+    env                 VARCHAR,
+    consumer_id         BIGINT,
+    method              VARCHAR,
+    path                VARCHAR,
+    status_code         INTEGER,
+    requests            BIGINT,
+    requests_per_minute DOUBLE,
+    bytes_received      BIGINT,
+    bytes_sent          BIGINT,
+    client_errors       BIGINT,
+    server_errors       BIGINT,
+    error_rate          DOUBLE,
+    response_time_p50   INTEGER,             -- milliseconds
+    response_time_p75   INTEGER,             -- milliseconds
+    response_time_p95   INTEGER              -- milliseconds
+);
+```
+
+Columns are only populated if included in `--metrics` or `--group-by` during fetch. No unique constraint; deduplication is handled by deleting existing rows for the time range being inserted.
 
 ## request_logs
 
@@ -129,9 +156,12 @@ Populated by the `request-details` command when using `--db`.
 ## Relationships
 
 - `request_logs.consumer_id` references `consumers.consumer_id` (join on both `app_id` and `consumer_id`)
+- `metrics.consumer_id` references `consumers.consumer_id` (join on both `app_id` and `consumer_id`, only when metrics are grouped by consumer_id)
 - `endpoints.app_id` references `apps.app_id`
+- `metrics.app_id` references `apps.app_id`
 - `request_logs.app_id` references `apps.app_id`
 - `app_envs.app_id` references `apps.app_id`
 - `request_logs.env` matches `app_envs.name` (string, not a foreign key to `app_env_id`)
+- `metrics.env` matches `app_envs.name` (string, only when metrics are grouped by env)
 - `application_logs.request_uuid` references `request_logs.request_uuid` (join on both `app_id` and `request_uuid`)
 - `spans.request_uuid` references `request_logs.request_uuid` (join on both `app_id` and `request_uuid`)
