@@ -50,7 +50,7 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
 
 ## Investigation Workflow
 
-1. **Check authentication** — run `npx @apitally/cli whoami`. If it fails, ask the user to provide their Apitally API key or run `npx @apitally/cli auth` themselves. Explain that API keys can be created in the Apitally dashboard under Settings > API keys (https://app.apitally.io/settings/api-keys). If the user provides a key, run `npx @apitally/cli auth --api-key <key>` to store it.
+1. **Check authentication** — run `npx @apitally/cli whoami`. If it fails, ask the user to run `npx @apitally/cli auth` to set their API key. Explain that API keys can be created in the Apitally dashboard under Settings > API keys (https://app.apitally.io/settings/api-keys).
 
 2. **Identify the app** — run `npx @apitally/cli apps` to list apps and get their IDs. If there is more than one app, and the correct app can't be inferred from the user's messages, ask the user which app they mean. Use the app ID consistently for all commands and SQL `WHERE` conditions throughout the investigation.
 
