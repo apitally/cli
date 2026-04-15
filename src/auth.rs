@@ -151,9 +151,10 @@ fn browser_auth(app_url: &str, input: Option<Box<dyn Read + Send>>) -> Result<St
     let app_url = app_url.to_string();
     thread::spawn(move || run_callback_server(listener, tx, &app_url));
 
-    let api_key = rx
-        .recv_timeout(Duration::from_secs(300))
-        .map_err(|_| auth_err("authentication timed out"))?;
+    let api_key = rx.recv_timeout(Duration::from_secs(300)).map_err(|_| {
+        eprintln!("\n");
+        auth_err("authentication timed out")
+    })?;
     Ok(api_key)
 }
 
