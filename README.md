@@ -14,9 +14,10 @@ the 📚 [documentation](https://docs.apitally.io).
 
 ## Highlights
 
-- Stream API request logs from Apitally to a local [DuckDB](https://github.com/duckdb/duckdb) database
-- Run arbitrary SQL queries against that database to analyze API request data
-- Bundled DuckDB, no runtime dependencies, written in Rust (it's fast)
+- Retrieve API metrics and request logs, including headers, payloads, traces, and more
+- Load data into a local [DuckDB](https://github.com/duckdb/duckdb) database and analyze it with arbitrary SQL queries
+- Single Rust binary with bundled DuckDB, no runtime dependencies
+- Includes an [agent skill](skills/apitally-cli/) so agents know how to use the CLI effectively out of the box
 
 ## Installation
 
