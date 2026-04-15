@@ -107,7 +107,7 @@ pub fn run(
     api_base_url: Option<String>,
     app_url: &str,
     auth_file_path: &Path,
-    input: Box<dyn Read + Send>,
+    input: Option<Box<dyn Read + Send>>,
 ) -> Result<()> {
     let api_key = match api_key {
         Some(key) => key,
@@ -125,7 +125,7 @@ pub fn run(
     Ok(())
 }
 
-fn browser_auth(app_url: &str, input: Box<dyn Read + Send>) -> Result<String> {
+fn browser_auth(app_url: &str, input: Option<Box<dyn Read + Send>>) -> Result<String> {
     let listener =
         TcpListener::bind("127.0.0.1:0").context("failed to start local callback server")?;
     let port = listener.local_addr()?.port();
@@ -136,14 +136,20 @@ fn browser_auth(app_url: &str, input: Box<dyn Read + Send>) -> Result<String> {
 
     eprintln!("Opening browser with URL: {url}\n");
     eprintln!("Complete the auth flow in the browser.");
-    eprint!("Or paste your API key and press Enter: ");
+    if input.is_some() {
+        eprint!("Or paste your API key and press Enter: ");
+    }
     io::stderr().flush()?;
 
     let (tx, rx) = mpsc::channel();
 
-    let tx_server = tx.clone();
-    thread::spawn(move || run_callback_server(listener, tx_server));
-    thread::spawn(move || read_stdin(tx, input));
+    if let Some(input) = input {
+        let tx_stdin = tx.clone();
+        thread::spawn(move || read_stdin(tx_stdin, input));
+    }
+
+    let app_url = app_url.to_string();
+    thread::spawn(move || run_callback_server(listener, tx, &app_url));
 
     let api_key = rx
         .recv_timeout(Duration::from_secs(300))
@@ -162,10 +168,10 @@ fn read_stdin(tx: mpsc::Sender<String>, input: Box<dyn Read + Send>) {
     }
 }
 
-fn run_callback_server(listener: TcpListener, tx: mpsc::Sender<String>) {
+fn run_callback_server(listener: TcpListener, tx: mpsc::Sender<String>, app_url: &str) {
     listener.set_nonblocking(false).ok();
     while let Ok((mut stream, _)) = listener.accept() {
-        if let Some(api_key) = handle_callback_request(&mut stream) {
+        if let Some(api_key) = handle_callback_request(&mut stream, app_url) {
             eprintln!("\n");
             let _ = tx.send(api_key);
             return;
@@ -173,18 +179,23 @@ fn run_callback_server(listener: TcpListener, tx: mpsc::Sender<String>) {
     }
 }
 
-fn handle_callback_request(stream: &mut TcpStream) -> Option<String> {
+fn handle_callback_request(stream: &mut TcpStream, app_url: &str) -> Option<String> {
+    stream
+        .set_read_timeout(Some(std::time::Duration::from_secs(1)))
+        .ok();
     let mut buf = [0u8; 4096];
     let n = stream.read(&mut buf).ok()?;
     let request = std::str::from_utf8(&buf[..n]).ok()?;
 
     if request.starts_with("OPTIONS ") {
-        let response = "HTTP/1.1 204 No Content\r\n\
-            Access-Control-Allow-Origin: *\r\n\
+        let response = format!(
+            "HTTP/1.1 204 No Content\r\n\
+            Access-Control-Allow-Origin: {app_url}\r\n\
             Access-Control-Allow-Methods: POST\r\n\
             Access-Control-Allow-Headers: Content-Type\r\n\
             Content-Length: 0\r\n\
-            \r\n";
+            \r\n"
+        );
         stream.write_all(response.as_bytes()).ok();
         return None;
     }
@@ -197,18 +208,22 @@ fn handle_callback_request(stream: &mut TcpStream) -> Option<String> {
             .and_then(|parsed| parsed["api_key"].as_str().map(String::from));
 
         if let Some(api_key) = api_key {
-            let response = "HTTP/1.1 200 OK\r\n\
-                Access-Control-Allow-Origin: *\r\n\
+            let response = format!(
+                "HTTP/1.1 200 OK\r\n\
+                Access-Control-Allow-Origin: {app_url}\r\n\
                 Content-Length: 0\r\n\
-                \r\n";
+                \r\n"
+            );
             stream.write_all(response.as_bytes()).ok();
             return Some(api_key);
         }
 
-        let response = "HTTP/1.1 400 Bad Request\r\n\
-            Access-Control-Allow-Origin: *\r\n\
+        let response = format!(
+            "HTTP/1.1 400 Bad Request\r\n\
+            Access-Control-Allow-Origin: {app_url}\r\n\
             Content-Length: 0\r\n\
-            \r\n";
+            \r\n"
+        );
         stream.write_all(response.as_bytes()).ok();
         return None;
     }
@@ -281,7 +296,7 @@ mod tests {
             Some("https://custom.api".into()),
             "https://app.apitally.io",
             &path,
-            Box::new(io::empty()),
+            None,
         )
         .unwrap();
         let config = load_auth_file(&path).unwrap().unwrap();
@@ -293,8 +308,9 @@ mod tests {
     fn test_run_with_stdin() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("auth.json");
-        let input = Box::new(io::Cursor::new(format!("{TEST_API_KEY}\n").into_bytes()));
-        run(None, None, "https://app.apitally.io", &path, input).unwrap();
+        let input: Box<dyn Read + Send> =
+            Box::new(io::Cursor::new(format!("{TEST_API_KEY}\n").into_bytes()));
+        run(None, None, "https://app.apitally.io", &path, Some(input)).unwrap();
         let config = load_auth_file(&path).unwrap().unwrap();
         assert_eq!(config.api_key, TEST_API_KEY);
         assert!(config.api_base_url.is_none());
@@ -302,14 +318,13 @@ mod tests {
 
     #[test]
     fn test_run_with_callback() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("auth.json");
-
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
 
         let (tx, rx) = mpsc::channel();
-        thread::spawn(move || run_callback_server(listener, tx));
+        let app_url = "https://app.apitally.io";
+        let app_url_owned = app_url.to_string();
+        thread::spawn(move || run_callback_server(listener, tx, &app_url_owned));
 
         // Send CORS preflight
         let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
@@ -320,10 +335,25 @@ mod tests {
         let n = stream.read(&mut response).unwrap();
         let response_str = std::str::from_utf8(&response[..n]).unwrap();
         assert!(response_str.contains("204"));
-        assert!(response_str.contains("Access-Control-Allow-Origin: *"));
+        assert!(response_str.contains(&format!("Access-Control-Allow-Origin: {app_url}")));
 
-        // Send callback POST
-        let body = r#"{"api_key":"callback-key"}"#;
+        // Send callback POST with invalid data
+        let body = r#"{"invalid":"data"}"#;
+        let request = format!(
+            "POST /callback HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
+        stream.write_all(request.as_bytes()).unwrap();
+        let mut response = vec![0u8; 1024];
+        let n = stream.read(&mut response).unwrap();
+        let response_str = std::str::from_utf8(&response[..n]).unwrap();
+        assert!(response_str.contains("400"));
+        assert!(response_str.contains(&format!("Access-Control-Allow-Origin: {app_url}")));
+
+        // Send callback POST with valid api_key
+        let body = format!(r#"{{"api_key":"{TEST_API_KEY}"}}"#);
         let request = format!(
             "POST /callback HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
             body.len(),
@@ -337,18 +367,7 @@ mod tests {
         assert!(response_str.contains("200"));
 
         let api_key = rx.recv_timeout(Duration::from_secs(5)).unwrap();
-        assert_eq!(api_key, "callback-key");
-
-        save_auth_file(
-            &path,
-            &AuthConfig {
-                api_key,
-                api_base_url: None,
-            },
-        )
-        .unwrap();
-        let config = load_auth_file(&path).unwrap().unwrap();
-        assert_eq!(config.api_key, "callback-key");
+        assert_eq!(api_key, TEST_API_KEY);
     }
 
     #[test]

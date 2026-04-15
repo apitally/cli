@@ -332,17 +332,17 @@ fn exit_code(err: &anyhow::Error) -> i32 {
 fn run(cli: Cli) -> Result<()> {
     match cli.command {
         Command::Auth { api, app_url } => {
-            if api.api_key.is_none() && !std::io::stdin().is_terminal() {
-                return Err(utils::auth_err(
-                    "no API key provided. Use --api-key or set APITALLY_API_KEY",
-                ));
-            }
+            let input = if std::io::stdin().is_terminal() {
+                Some(Box::new(std::io::stdin()) as Box<dyn std::io::Read + Send>)
+            } else {
+                None
+            };
             auth::run(
                 api.api_key,
                 api.api_base_url,
                 &app_url,
                 &auth::auth_file_path()?,
-                Box::new(std::io::stdin()),
+                input,
             )
         }
         Command::Whoami { api } => whoami::run(
