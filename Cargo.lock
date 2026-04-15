@@ -119,6 +119,7 @@ dependencies = [
  "duckdb",
  "mockito",
  "open",
+ "regex",
  "serde",
  "serde_json",
  "tempfile",

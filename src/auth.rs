@@ -9,6 +9,8 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
+use regex::Regex;
+
 use crate::utils::{ansi, auth_err};
 
 const DEFAULT_API_BASE_URL: &str = "https://api.apitally.io";
@@ -78,6 +80,14 @@ fn pick_api_base_url(api_base_url: Option<&str>, config: Option<&AuthConfig>) ->
     DEFAULT_API_BASE_URL.to_string()
 }
 
+fn validate_api_key(api_key: &str) -> Result<()> {
+    let re = Regex::new(r"^[a-zA-Z0-9]{7}\.[a-zA-Z0-9]{32}$").unwrap();
+    if !re.is_match(api_key) {
+        return Err(auth_err("invalid API key format"));
+    }
+    Ok(())
+}
+
 /// Resolve API key with precedence: --api-key flag / APITALLY_API_KEY env (via clap) > auth.json
 pub fn resolve_api_key(api_key: Option<&str>) -> Result<String> {
     let config = load_auth_file(&auth_file_path()?)?;
@@ -103,6 +113,7 @@ pub fn run(
         Some(key) => key,
         None => browser_auth(app_url, input)?,
     };
+    validate_api_key(&api_key)?;
     save_auth_file(
         auth_file_path,
         &AuthConfig {
@@ -209,6 +220,8 @@ fn handle_callback_request(stream: &mut TcpStream) -> Option<String> {
 mod tests {
     use super::*;
 
+    const TEST_API_KEY: &str = "aBcDeFg.01234567890123456789012345678901";
+
     #[test]
     fn test_save_and_load_config() {
         let dir = tempfile::tempdir().unwrap();
@@ -264,7 +277,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("auth.json");
         run(
-            Some("provided-key".into()),
+            Some(TEST_API_KEY.into()),
             Some("https://custom.api".into()),
             "https://app.apitally.io",
             &path,
@@ -272,7 +285,7 @@ mod tests {
         )
         .unwrap();
         let config = load_auth_file(&path).unwrap().unwrap();
-        assert_eq!(config.api_key, "provided-key");
+        assert_eq!(config.api_key, TEST_API_KEY);
         assert_eq!(config.api_base_url.as_deref(), Some("https://custom.api"));
     }
 
@@ -280,10 +293,10 @@ mod tests {
     fn test_run_with_stdin() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("auth.json");
-        let input = Box::new(io::Cursor::new(b"stdin-key\n".to_vec()));
+        let input = Box::new(io::Cursor::new(format!("{TEST_API_KEY}\n").into_bytes()));
         run(None, None, "https://app.apitally.io", &path, input).unwrap();
         let config = load_auth_file(&path).unwrap().unwrap();
-        assert_eq!(config.api_key, "stdin-key");
+        assert_eq!(config.api_key, TEST_API_KEY);
         assert!(config.api_base_url.is_none());
     }
 
@@ -336,6 +349,17 @@ mod tests {
         .unwrap();
         let config = load_auth_file(&path).unwrap().unwrap();
         assert_eq!(config.api_key, "callback-key");
+    }
+
+    #[test]
+    fn test_validate_api_key() {
+        assert!(validate_api_key(TEST_API_KEY).is_ok());
+        assert!(validate_api_key("short.01234567890123456789012345678901").is_err());
+        assert!(validate_api_key("aBcDeFg.short").is_err());
+        assert!(validate_api_key("invalid-key").is_err());
+        assert!(validate_api_key("").is_err());
+        assert!(validate_api_key("abc!eFg.01234567890123456789012345678901").is_err());
+        assert!(validate_api_key("aBcDeFg.0123456789012345678901234567890!").is_err());
     }
 
     #[test]
