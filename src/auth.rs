@@ -97,10 +97,11 @@ pub fn run(
     api_base_url: Option<String>,
     app_url: &str,
     auth_file_path: &Path,
+    input: Box<dyn Read + Send>,
 ) -> Result<()> {
     let api_key = match api_key {
         Some(key) => key,
-        None => browser_auth(app_url)?,
+        None => browser_auth(app_url, input)?,
     };
     save_auth_file(
         auth_file_path,
@@ -113,12 +114,13 @@ pub fn run(
     Ok(())
 }
 
-fn browser_auth(app_url: &str) -> Result<String> {
+fn browser_auth(app_url: &str, input: Box<dyn Read + Send>) -> Result<String> {
     let listener =
         TcpListener::bind("127.0.0.1:0").context("failed to start local callback server")?;
     let port = listener.local_addr()?.port();
-
     let url = format!("{app_url}/cli-auth?callback_port={port}");
+
+    #[cfg(not(test))]
     let _ = open::that(&url);
 
     eprintln!("Opening browser with URL: {url}\n");
@@ -130,7 +132,7 @@ fn browser_auth(app_url: &str) -> Result<String> {
 
     let tx_server = tx.clone();
     thread::spawn(move || run_callback_server(listener, tx_server));
-    thread::spawn(move || read_stdin(tx));
+    thread::spawn(move || read_stdin(tx, input));
 
     let api_key = rx
         .recv_timeout(Duration::from_secs(300))
@@ -138,9 +140,9 @@ fn browser_auth(app_url: &str) -> Result<String> {
     Ok(api_key)
 }
 
-fn read_stdin(tx: mpsc::Sender<String>) {
+fn read_stdin(tx: mpsc::Sender<String>, input: Box<dyn Read + Send>) {
     let mut line = String::new();
-    if io::stdin().lock().read_line(&mut line).is_ok() {
+    if io::BufReader::new(input).read_line(&mut line).is_ok() {
         let key = line.trim().to_string();
         if !key.is_empty() {
             eprintln!();
@@ -258,7 +260,7 @@ mod tests {
     }
 
     #[test]
-    fn test_run_with_provided_key() {
+    fn test_run_with_api_key_flag() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("auth.json");
         run(
@@ -266,11 +268,23 @@ mod tests {
             Some("https://custom.api".into()),
             "https://app.apitally.io",
             &path,
+            Box::new(io::empty()),
         )
         .unwrap();
         let config = load_auth_file(&path).unwrap().unwrap();
         assert_eq!(config.api_key, "provided-key");
         assert_eq!(config.api_base_url.as_deref(), Some("https://custom.api"));
+    }
+
+    #[test]
+    fn test_run_with_stdin() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("auth.json");
+        let input = Box::new(io::Cursor::new(b"stdin-key\n".to_vec()));
+        run(None, None, "https://app.apitally.io", &path, input).unwrap();
+        let config = load_auth_file(&path).unwrap().unwrap();
+        assert_eq!(config.api_key, "stdin-key");
+        assert!(config.api_base_url.is_none());
     }
 
     #[test]

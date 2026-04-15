@@ -342,6 +342,7 @@ fn run(cli: Cli) -> Result<()> {
                 api.api_base_url,
                 &app_url,
                 &auth::auth_file_path()?,
+                Box::new(std::io::stdin()),
             )
         }
         Command::Whoami { api } => whoami::run(
