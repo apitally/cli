@@ -10,7 +10,9 @@ Commands that accept a `--db` flag use `~/.apitally/data.duckdb` as the default 
 npx @apitally/cli auth [--api-key <key>]
 ```
 
-Configure API key interactively or by providing a key directly. Saves API key to `~/.apitally/auth.json`.
+Opens a browser-based auth flow where the user logs in to the Apitally dashboard and selects a team. A newly created API key is then passed back to the CLI. The key is saved to `~/.apitally/auth.json` and used by all subsequent commands unless overridden by the `--api-key` flag.
+
+If `--api-key` is provided, the key is saved directly without opening the browser.
 
 ## `whoami`
 

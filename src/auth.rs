@@ -1,11 +1,15 @@
 use std::fs;
-use std::io::{self, BufRead, Write};
+use std::io::{self, BufRead, Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::utils::auth_err;
+use crate::utils::{ansi, auth_err};
 
 const DEFAULT_API_BASE_URL: &str = "https://api.apitally.io";
 
@@ -91,12 +95,12 @@ pub fn resolve_api_base_url(api_base_url: Option<&str>) -> String {
 pub fn run(
     api_key: Option<String>,
     api_base_url: Option<String>,
+    app_url: &str,
     auth_file_path: &Path,
-    input: &mut impl io::Read,
 ) -> Result<()> {
     let api_key = match api_key {
         Some(key) => key,
-        None => prompt_api_key(input)?,
+        None => browser_auth(app_url)?,
     };
     save_auth_file(
         auth_file_path,
@@ -105,22 +109,98 @@ pub fn run(
             api_base_url,
         },
     )?;
-    eprintln!("Authentication configured successfully.");
+    eprintln!("{}", ansi("1;32", "API key configured successfully."));
     Ok(())
 }
 
-fn prompt_api_key(input: &mut impl io::Read) -> Result<String> {
-    eprintln!("To get your API key, go to https://app.apitally.io/settings/api-keys");
-    eprintln!();
-    eprint!("API key: ");
+fn browser_auth(app_url: &str) -> Result<String> {
+    let listener =
+        TcpListener::bind("127.0.0.1:0").context("failed to start local callback server")?;
+    let port = listener.local_addr()?.port();
+
+    let url = format!("{app_url}/cli-auth?callback_port={port}");
+    let _ = open::that(&url);
+
+    eprintln!("Opening browser with URL: {url}\n");
+    eprintln!("Complete the auth flow in the browser.");
+    eprint!("Or paste your API key and press Enter: ");
     io::stderr().flush()?;
+
+    let (tx, rx) = mpsc::channel();
+
+    let tx_server = tx.clone();
+    thread::spawn(move || run_callback_server(listener, tx_server));
+    thread::spawn(move || read_stdin(tx));
+
+    let api_key = rx
+        .recv_timeout(Duration::from_secs(300))
+        .map_err(|_| auth_err("authentication timed out"))?;
+    Ok(api_key)
+}
+
+fn read_stdin(tx: mpsc::Sender<String>) {
     let mut line = String::new();
-    io::BufReader::new(input).read_line(&mut line)?;
-    let key = line.trim().to_string();
-    if key.is_empty() {
-        return Err(auth_err("API key cannot be empty"));
+    if io::stdin().lock().read_line(&mut line).is_ok() {
+        let key = line.trim().to_string();
+        if !key.is_empty() {
+            eprintln!();
+            let _ = tx.send(key);
+        }
     }
-    Ok(key)
+}
+
+fn run_callback_server(listener: TcpListener, tx: mpsc::Sender<String>) {
+    listener.set_nonblocking(false).ok();
+    while let Ok((mut stream, _)) = listener.accept() {
+        if let Some(api_key) = handle_callback_request(&mut stream) {
+            eprintln!("\n");
+            let _ = tx.send(api_key);
+            return;
+        }
+    }
+}
+
+fn handle_callback_request(stream: &mut TcpStream) -> Option<String> {
+    let mut buf = [0u8; 4096];
+    let n = stream.read(&mut buf).ok()?;
+    let request = std::str::from_utf8(&buf[..n]).ok()?;
+
+    if request.starts_with("OPTIONS ") {
+        let response = "HTTP/1.1 204 No Content\r\n\
+            Access-Control-Allow-Origin: *\r\n\
+            Access-Control-Allow-Methods: POST\r\n\
+            Access-Control-Allow-Headers: Content-Type\r\n\
+            Content-Length: 0\r\n\
+            \r\n";
+        stream.write_all(response.as_bytes()).ok();
+        return None;
+    }
+
+    if request.starts_with("POST ") {
+        let api_key = request
+            .split("\r\n\r\n")
+            .nth(1)
+            .and_then(|body| serde_json::from_str::<serde_json::Value>(body).ok())
+            .and_then(|parsed| parsed["api_key"].as_str().map(String::from));
+
+        if let Some(api_key) = api_key {
+            let response = "HTTP/1.1 200 OK\r\n\
+                Access-Control-Allow-Origin: *\r\n\
+                Content-Length: 0\r\n\
+                \r\n";
+            stream.write_all(response.as_bytes()).ok();
+            return Some(api_key);
+        }
+
+        let response = "HTTP/1.1 400 Bad Request\r\n\
+            Access-Control-Allow-Origin: *\r\n\
+            Content-Length: 0\r\n\
+            \r\n";
+        stream.write_all(response.as_bytes()).ok();
+        return None;
+    }
+
+    None
 }
 
 #[cfg(test)]
@@ -184,8 +264,8 @@ mod tests {
         run(
             Some("provided-key".into()),
             Some("https://custom.api".into()),
+            "https://app.apitally.io",
             &path,
-            &mut io::empty(),
         )
         .unwrap();
         let config = load_auth_file(&path).unwrap().unwrap();
@@ -194,14 +274,54 @@ mod tests {
     }
 
     #[test]
-    fn test_run_with_prompted_key() {
+    fn test_run_with_callback() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("auth.json");
-        let mut input = io::Cursor::new(b"prompted-key\n");
-        run(None, None, &path, &mut input).unwrap();
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || run_callback_server(listener, tx));
+
+        // Send CORS preflight
+        let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
+        stream
+            .write_all(b"OPTIONS /callback HTTP/1.1\r\nOrigin: https://app.apitally.io\r\n\r\n")
+            .unwrap();
+        let mut response = vec![0u8; 1024];
+        let n = stream.read(&mut response).unwrap();
+        let response_str = std::str::from_utf8(&response[..n]).unwrap();
+        assert!(response_str.contains("204"));
+        assert!(response_str.contains("Access-Control-Allow-Origin: *"));
+
+        // Send callback POST
+        let body = r#"{"api_key":"callback-key"}"#;
+        let request = format!(
+            "POST /callback HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
+        stream.write_all(request.as_bytes()).unwrap();
+        let mut response = vec![0u8; 1024];
+        let n = stream.read(&mut response).unwrap();
+        let response_str = std::str::from_utf8(&response[..n]).unwrap();
+        assert!(response_str.contains("200"));
+
+        let api_key = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert_eq!(api_key, "callback-key");
+
+        save_auth_file(
+            &path,
+            &AuthConfig {
+                api_key,
+                api_base_url: None,
+            },
+        )
+        .unwrap();
         let config = load_auth_file(&path).unwrap().unwrap();
-        assert_eq!(config.api_key, "prompted-key");
-        assert!(config.api_base_url.is_none());
+        assert_eq!(config.api_key, "callback-key");
     }
 
     #[test]

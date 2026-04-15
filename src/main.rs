@@ -47,6 +47,15 @@ enum Command {
     Auth {
         #[command(flatten)]
         api: ApiArgs,
+
+        /// URL of the Apitally dashboard (for browser-based auth)
+        #[arg(
+            long,
+            env = "APITALLY_APP_URL",
+            default_value = "https://app.apitally.io",
+            hide = true
+        )]
+        app_url: String,
     },
 
     /// Show the authenticated team
@@ -302,11 +311,7 @@ enum Command {
 fn main() {
     let cli = Cli::parse();
     if let Err(err) = run(cli) {
-        if std::io::stderr().is_terminal() {
-            eprintln!("\x1b[1;31merror:\x1b[0m {err:#}");
-        } else {
-            eprintln!("error: {err:#}");
-        }
+        eprintln!("{} {err:#}", utils::ansi("1;31", "error:"));
         std::process::exit(exit_code(&err));
     }
 }
@@ -326,7 +331,7 @@ fn exit_code(err: &anyhow::Error) -> i32 {
 
 fn run(cli: Cli) -> Result<()> {
     match cli.command {
-        Command::Auth { api } => {
+        Command::Auth { api, app_url } => {
             if api.api_key.is_none() && !std::io::stdin().is_terminal() {
                 return Err(utils::auth_err(
                     "no API key provided. Use --api-key or set APITALLY_API_KEY",
@@ -335,8 +340,8 @@ fn run(cli: Cli) -> Result<()> {
             auth::run(
                 api.api_key,
                 api.api_base_url,
+                &app_url,
                 &auth::auth_file_path()?,
-                &mut std::io::stdin(),
             )
         }
         Command::Whoami { api } => whoami::run(
