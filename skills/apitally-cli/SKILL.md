@@ -21,7 +21,7 @@ Run commands with `npx` (no install needed):
 npx @apitally/cli <command> [--api-key <key>]
 ```
 
-A team-scoped API key is required to use the CLI. The `auth` command writes the provided API key to `~/.apitally/auth.json`. It's then used by all subsequent commands unless overridden by the `--api-key` flag.
+A team-scoped API key is required to use the CLI. The `auth` command saves an API key to `~/.apitally/auth.json`, which is then used by all subsequent commands unless overridden by the `--api-key` flag.
 
 All commands output NDJSON to stdout by default. With `--db`, data is written to a DuckDB database instead (`~/.apitally/data.duckdb` by default), enabling SQL queries via the `sql` command.
 
@@ -50,7 +50,7 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
 
 ## Investigation Workflow
 
-1. **Check authentication** — run `npx @apitally/cli whoami`. If it fails, ask the user to run `npx @apitally/cli auth` to set their API key. Explain that API keys can be created in the Apitally dashboard under Settings > API keys (https://app.apitally.io/settings/api-keys).
+1. **Check authentication** — run `npx @apitally/cli whoami`. If it fails, ask the user to run `npx @apitally/cli auth` to authenticate.
 
 2. **Identify the app** — run `npx @apitally/cli apps` to list apps and get their IDs. If there is more than one app, and the correct app can't be inferred from the user's messages, ask the user which app they mean. Use the app ID consistently for all commands and SQL `WHERE` conditions throughout the investigation.
 

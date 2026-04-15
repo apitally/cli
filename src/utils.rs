@@ -1,3 +1,4 @@
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -32,6 +33,14 @@ pub fn input_err(msg: impl Into<String>) -> anyhow::Error {
 
 pub fn api_err(msg: impl Into<String>) -> anyhow::Error {
     CliError::Api(msg.into()).into()
+}
+
+pub fn ansi(code: &str, text: impl std::fmt::Display) -> String {
+    if std::io::stderr().is_terminal() {
+        format!("\x1b[{code}m{text}\x1b[0m")
+    } else {
+        text.to_string()
+    }
 }
 
 pub fn default_db_path() -> Result<PathBuf> {
