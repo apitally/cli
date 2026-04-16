@@ -96,6 +96,19 @@ pub fn resolve_relative_datetime(s: &str) -> String {
     dt.to_rfc3339()
 }
 
+/// Parses a string as either a JSON array or a comma-separated list of strings.
+pub fn parse_string_list(s: &str) -> Result<serde_json::Value> {
+    if s.starts_with('[') {
+        return serde_json::from_str::<serde_json::Value>(s).map_err(Into::into);
+    }
+    let items: Vec<&str> = s
+        .split(',')
+        .map(|item| item.trim())
+        .filter(|item| !item.is_empty())
+        .collect();
+    Ok(serde_json::json!(items))
+}
+
 pub fn api_get(url: &str, api_key: &str, query: &[(&str, &str)]) -> Result<Response<Body>> {
     let mut req = ureq::get(url)
         .header("Api-Key", api_key)
@@ -183,6 +196,31 @@ mod tests {
         assert_approximately_now_minus(&resolve_relative_datetime("2h"), 2 * 3600);
         assert_approximately_now_minus(&resolve_relative_datetime("3d"), 259_200);
         assert_approximately_now_minus(&resolve_relative_datetime("1w"), 604_800);
+    }
+
+    #[test]
+    fn test_parse_string_list() {
+        assert_eq!(
+            parse_string_list(r#"["requests","error_rate"]"#).unwrap(),
+            serde_json::json!(["requests", "error_rate"])
+        );
+        assert_eq!(
+            parse_string_list("requests,error_rate").unwrap(),
+            serde_json::json!(["requests", "error_rate"])
+        );
+        assert_eq!(
+            parse_string_list("requests").unwrap(),
+            serde_json::json!(["requests"])
+        );
+        assert_eq!(
+            parse_string_list("requests , error_rate").unwrap(),
+            serde_json::json!(["requests", "error_rate"])
+        );
+        assert_eq!(
+            parse_string_list("requests,,error_rate").unwrap(),
+            serde_json::json!(["requests", "error_rate"])
+        );
+        assert!(parse_string_list("[foo]").is_err());
     }
 
     #[test]

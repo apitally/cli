@@ -6,7 +6,7 @@ use duckdb::arrow::ipc::reader::StreamReader;
 use duckdb::vtab::arrow::{ArrowVTab, arrow_recordbatch_to_query_params};
 
 use crate::auth::{resolve_api_base_url, resolve_api_key};
-use crate::utils::{api_post, input_err, open_db, resolve_relative_datetime};
+use crate::utils::{api_post, input_err, open_db, parse_string_list, resolve_relative_datetime};
 
 pub(crate) fn ensure_request_logs_table(conn: &duckdb::Connection) -> Result<()> {
     conn.execute_batch(
@@ -69,9 +69,8 @@ pub fn run(
         body["until"] = serde_json::json!(until);
     }
     if let Some(fields) = fields {
-        let fields_value: serde_json::Value = serde_json::from_str(fields)
+        body["fields"] = parse_string_list(fields)
             .map_err(|e| input_err(format!("invalid JSON for --fields: {e}")))?;
-        body["fields"] = fields_value;
     }
     if let Some(filters) = filters {
         let filters_value: serde_json::Value = serde_json::from_str(filters)

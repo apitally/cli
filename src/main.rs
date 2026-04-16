@@ -146,7 +146,7 @@ enum Command {
         #[arg(long)]
         until: Option<String>,
 
-        /// JSON array of metric names to include
+        /// JSON array or comma-separated list of metric names to include
         ///
         /// Available metrics: requests, requests_per_minute, bytes_received,
         /// bytes_sent, client_errors, server_errors, error_rate,
@@ -161,7 +161,7 @@ enum Command {
         #[arg(long)]
         interval: Option<String>,
 
-        /// JSON array of field names to group by (in addition to time interval)
+        /// JSON array or comma-separated list of field names to group by (in addition to time interval)
         ///
         /// Available fields: env, consumer_id, method, path, status_code.
         #[arg(long)]
@@ -213,7 +213,7 @@ enum Command {
         #[arg(long)]
         until: Option<String>,
 
-        /// JSON array of field names to include
+        /// JSON array or comma-separated list of field names to include
         ///
         /// Available fields: timestamp, request_uuid, env, method, path,
         /// url, consumer_id, request_headers, request_size_bytes, request_body_json,
