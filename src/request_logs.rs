@@ -283,6 +283,37 @@ mod tests {
     }
 
     #[test]
+    fn test_run_ndjson_with_sample() {
+        for (sample, expected_json) in
+            [("500", r#"{"sample":500}"#), ("0.25", r#"{"sample":0.25}"#)]
+        {
+            let mut server = mockito::Server::new();
+            let mock = server
+                .mock("POST", "/v1/apps/1/request-logs")
+                .match_body(mockito::Matcher::PartialJsonString(expected_json.into()))
+                .with_status(200)
+                .with_body(sample_request_logs_ndjson())
+                .create();
+
+            run(
+                1,
+                "2025-01-01",
+                None,
+                None,
+                None,
+                Some(sample),
+                None,
+                None,
+                Some("test-key"),
+                Some(&server.url()),
+                &mut Vec::new(),
+            )
+            .unwrap();
+            mock.assert();
+        }
+    }
+
+    #[test]
     fn test_run_with_db() {
         let mut server = mockito::Server::new();
         let mock = mock_request_logs_endpoint(&mut server, 1, sample_request_logs_arrow_ipc());
