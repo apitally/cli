@@ -6,7 +6,7 @@ use duckdb::arrow::ipc::reader::StreamReader;
 use duckdb::vtab::arrow::{ArrowVTab, arrow_recordbatch_to_query_params};
 
 use crate::auth::{resolve_api_base_url, resolve_api_key};
-use crate::utils::{api_post, input_err, open_db, resolve_relative_datetime};
+use crate::utils::{api_post, input_err, open_db, parse_string_list, resolve_relative_datetime};
 
 pub(crate) fn ensure_metrics_table(conn: &duckdb::Connection) -> Result<()> {
     conn.execute_batch(
@@ -55,13 +55,11 @@ pub fn run(
     let since = resolve_relative_datetime(since);
     let until = until.map(resolve_relative_datetime);
 
-    let metrics_value: serde_json::Value = serde_json::from_str(metrics)
-        .map_err(|e| input_err(format!("invalid JSON for --metrics: {e}")))?;
     let format = if db.is_some() { "arrow" } else { "ndjson" };
     let mut body = serde_json::json!({
         "format": format,
         "since": since,
-        "metrics": metrics_value,
+        "metrics": parse_string_list(metrics).map_err(|e| input_err(format!("invalid JSON for --metrics: {e}")))?,
     });
     if let Some(ref until) = until {
         body["until"] = serde_json::json!(until);
@@ -70,9 +68,8 @@ pub fn run(
         body["interval"] = serde_json::json!(interval);
     }
     if let Some(group_by) = group_by {
-        let group_by_value: serde_json::Value = serde_json::from_str(group_by)
+        body["group_by"] = parse_string_list(group_by)
             .map_err(|e| input_err(format!("invalid JSON for --group-by: {e}")))?;
-        body["group_by"] = group_by_value;
     }
     if let Some(filters) = filters {
         let filters_value: serde_json::Value = serde_json::from_str(filters)
