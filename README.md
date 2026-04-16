@@ -53,21 +53,19 @@ You can also download the binary for your platform from the [latest release](htt
 
 ## Authentication
 
-To use the CLI, you need an API key. You can create one in the [Apitally dashboard](https://app.apitally.io/settings/api-keys) under _Settings → API keys_.
-
-Then run the `auth` command to configure your API key interactively:
+Run the `auth` command to authenticate the CLI:
 
 ```bash
 npx @apitally/cli auth
 ```
 
-Or provide the key directly:
+This opens a browser-based auth flow where you log in to the Apitally dashboard and select a team. A newly created API key is then passed back to the CLI and saved to `~/.apitally/auth.json`.
+
+If you already have an API key, you can provide it directly:
 
 ```bash
 npx @apitally/cli auth --api-key "your-api-key"
 ```
-
-The API key is saved to `~/.apitally/auth.json`.
 
 You can also set the API key via the `APITALLY_API_KEY` environment variable or pass the `--api-key` flag to any command.
 
