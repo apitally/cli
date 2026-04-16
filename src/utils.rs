@@ -98,6 +98,7 @@ pub fn resolve_relative_datetime(s: &str) -> String {
 
 /// Parses a string as either a JSON array or a comma-separated list of strings.
 pub fn parse_string_list(s: &str) -> Result<serde_json::Value> {
+    let s = s.trim_start();
     if s.starts_with('[') {
         return serde_json::from_str::<serde_json::Value>(s).map_err(Into::into);
     }
