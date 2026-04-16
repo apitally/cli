@@ -231,7 +231,7 @@ mod tests {
             Some("hour"),
             Some(r#"["method"]"#),
             None,
-            None,
+            Some("Australia/Brisbane"),
             None,
             Some("test-key"),
             Some(&server.url()),
