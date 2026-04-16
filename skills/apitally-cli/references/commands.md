@@ -4,7 +4,7 @@ All commands accept an `--api-key <key>` flag for authentication (except `sql`).
 
 Commands that accept a `--db` flag use `~/.apitally/data.duckdb` as the default database path if no other path is specified. If the database file doesn't exist, it will be created (except for the `sql` command). When writing to tables, existing records are updated (no duplicates are created).
 
-Commands with a datetime flag (e.g. `--since`, `--until`, `--requests-since`) also accept relative durations (e.g. `30m`, `24h`, `7d`, `2w`) in addition to ISO 8601 strings.
+Datetime flags (e.g. `--since`, `--until`, `--requests-since`) accept ISO 8601 strings or compact relative durations (e.g. `30m`, `24h`, `7d`, `2w`).
 
 ## `auth`
 
