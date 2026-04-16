@@ -183,7 +183,7 @@ enum Command {
 
         /// Timezone for intervals and to interpret since/until if not tz-aware
         ///
-        /// Defaults to UTC. Example: America/New_York.
+        /// Defaults to system timezone. Example: America/New_York.
         #[arg(long)]
         timezone: Option<String>,
 

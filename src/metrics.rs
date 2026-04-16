@@ -77,9 +77,11 @@ pub fn run(
             .map_err(|e| input_err(format!("invalid JSON for --filters: {e}")))?;
         body["filters"] = filters_value;
     }
-    if let Some(timezone) = timezone {
-        body["timezone"] = serde_json::json!(timezone);
-    }
+    let timezone = match timezone {
+        Some(tz) => tz.to_owned(),
+        None => iana_time_zone::get_timezone().unwrap_or_else(|_| "UTC".to_owned()),
+    };
+    body["timezone"] = serde_json::json!(timezone);
     let url = format!("{api_base_url}/v1/apps/{app_id}/metrics");
     let response = api_post(&url, &api_key, &body)?;
 
@@ -229,7 +231,7 @@ mod tests {
             Some("hour"),
             Some(r#"["method"]"#),
             None,
-            None,
+            Some("Australia/Brisbane"),
             None,
             Some("test-key"),
             Some(&server.url()),
