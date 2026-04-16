@@ -90,7 +90,7 @@ enum Command {
         /// App ID
         app_id: i64,
 
-        /// Filter to consumers that have made requests since this date/time (ISO 8601)
+        /// Filter to consumers that have made requests since this datetime (ISO 8601 or relative duration, e.g. 24h, 7d)
         #[arg(long)]
         requests_since: Option<String>,
 
@@ -138,11 +138,11 @@ enum Command {
         /// App ID
         app_id: i64,
 
-        /// Since date/time (ISO 8601)
+        /// Since datetime (ISO 8601 or relative duration, e.g. 24h, 7d)
         #[arg(long)]
         since: String,
 
-        /// Until date/time (ISO 8601, defaults to now)
+        /// Until datetime (ISO 8601 or relative duration, e.g. 24h, 7d; defaults to now)
         #[arg(long)]
         until: Option<String>,
 
@@ -205,11 +205,11 @@ enum Command {
         /// App ID
         app_id: i64,
 
-        /// Since date/time (ISO 8601)
+        /// Since datetime (ISO 8601 or relative duration, e.g. 24h, 7d)
         #[arg(long)]
         since: String,
 
-        /// Until date/time (ISO 8601, defaults to now)
+        /// Until datetime (ISO 8601 or relative duration, e.g. 24h, 7d; defaults to now)
         #[arg(long)]
         until: Option<String>,
 

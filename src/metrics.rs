@@ -6,7 +6,7 @@ use duckdb::arrow::ipc::reader::StreamReader;
 use duckdb::vtab::arrow::{ArrowVTab, arrow_recordbatch_to_query_params};
 
 use crate::auth::{resolve_api_base_url, resolve_api_key};
-use crate::utils::{api_post, input_err, open_db};
+use crate::utils::{api_post, input_err, open_db, resolve_relative_datetime};
 
 pub(crate) fn ensure_metrics_table(conn: &duckdb::Connection) -> Result<()> {
     conn.execute_batch(
@@ -52,6 +52,8 @@ pub fn run(
     let api_key = resolve_api_key(api_key)?;
     let api_base_url = resolve_api_base_url(api_base_url);
     let db = db.map(|p| open_db(p).map(|c| (p, c))).transpose()?;
+    let since = resolve_relative_datetime(since);
+    let until = until.map(resolve_relative_datetime);
 
     let metrics_value: serde_json::Value = serde_json::from_str(metrics)
         .map_err(|e| input_err(format!("invalid JSON for --metrics: {e}")))?;
@@ -61,7 +63,7 @@ pub fn run(
         "since": since,
         "metrics": metrics_value,
     });
-    if let Some(until) = until {
+    if let Some(ref until) = until {
         body["until"] = serde_json::json!(until);
     }
     if let Some(interval) = interval {

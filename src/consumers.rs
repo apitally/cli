@@ -5,7 +5,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 use crate::auth::{resolve_api_base_url, resolve_api_key};
-use crate::utils::{api_get, open_db};
+use crate::utils::{api_get, open_db, resolve_relative_datetime};
 
 #[derive(Deserialize)]
 struct ConsumersResponse {
@@ -103,6 +103,7 @@ pub fn run(
     let api_key = resolve_api_key(api_key)?;
     let api_base_url = resolve_api_base_url(api_base_url);
     let db = db.map(|p| open_db(p).map(|c| (p, c))).transpose()?;
+    let requests_since = requests_since.map(resolve_relative_datetime);
 
     if let Some((_, conn)) = &db {
         ensure_consumers_table(conn)?;
@@ -123,7 +124,7 @@ pub fn run(
             &api_key,
             &api_base_url,
             app_id,
-            requests_since,
+            requests_since.as_deref(),
             next_token.as_deref(),
         )?;
         total += page.data.len();

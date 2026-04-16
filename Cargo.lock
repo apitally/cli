@@ -114,6 +114,7 @@ dependencies = [
  "anyhow",
  "arrow",
  "arrow-ipc",
+ "chrono",
  "clap",
  "dirs",
  "duckdb",
