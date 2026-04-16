@@ -83,7 +83,7 @@ pub fn run(
             }
             body["sample"] = serde_json::json!(n);
         } else if let Ok(f) = sample.parse::<f64>() {
-            if f <= 0.0 || f > 0.5 {
+            if !f.is_finite() || f <= 0.0 || f > 0.5 {
                 return Err(input_err(
                     "--sample as float must be between 0 (exclusive) and 0.5 (inclusive)",
                 ));
