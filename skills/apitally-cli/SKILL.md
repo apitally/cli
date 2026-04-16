@@ -43,7 +43,7 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
 - `consumers <app-id> [--requests-since <dt>] [--db [<path>]]` -- list consumers for an app (get consumer IDs)
 - `endpoints <app-id> [--method <methods>] [--path <pattern>] [--db [<path>]]` -- list endpoints for an app
 - `metrics <app-id> --since <dt> [--until <dt>] --metrics <json> [--interval <interval>] [--group-by <json>] [--filters <json>] [--timezone <tz>] [--db [<path>]]` -- fetch aggregated metrics
-- `request-logs <app-id> --since <dt> [--until <dt>] [--fields <json>] [--filters <json>] [--limit <n>] [--db [<path>]]` -- fetch request logs (max 1,000,000 rows at once)
+- `request-logs <app-id> --since <dt> [--until <dt>] [--fields <json>] [--filters <json>] [--sample <n|rate>] [--limit <n>] [--db [<path>]]` -- fetch request logs (max 1,000,000 rows at once)
 - `request-details <app-id> <request-uuid> [--db [<path>]]` -- fetch full details for a single request (including headers, payloads, exception info, application logs, and spans)
 - `sql "<query>" [--db <path>]` -- run SQL against local DuckDB
 - `reset-db [--db <path>]` -- drop and recreate all tables in local DuckDB

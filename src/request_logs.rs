@@ -47,6 +47,7 @@ pub fn run(
     until: Option<&str>,
     fields: Option<&str>,
     filters: Option<&str>,
+    sample: Option<&str>,
     limit: Option<i64>,
     db: Option<&Path>,
     api_key: Option<&str>,
@@ -74,6 +75,23 @@ pub fn run(
         let filters_value: serde_json::Value = serde_json::from_str(filters)
             .map_err(|e| input_err(format!("invalid JSON for --filters: {e}")))?;
         body["filters"] = filters_value;
+    }
+    if let Some(sample) = sample {
+        if let Ok(n) = sample.parse::<i64>() {
+            if n < 1 {
+                return Err(input_err("--sample as integer must be greater than 0"));
+            }
+            body["sample"] = serde_json::json!(n);
+        } else if let Ok(f) = sample.parse::<f64>() {
+            if f <= 0.0 || f > 0.5 {
+                return Err(input_err(
+                    "--sample as float must be between 0 (exclusive) and 0.5 (inclusive)",
+                ));
+            }
+            body["sample"] = serde_json::json!(f);
+        } else {
+            return Err(input_err("--sample must be an integer or float"));
+        }
     }
     if let Some(limit) = limit {
         body["limit"] = serde_json::json!(limit);
@@ -246,6 +264,7 @@ mod tests {
             Some("2025-01-02"),
             Some(r#"["method","url","status_code"]"#),
             Some(r#"{"status_code":200}"#),
+            None,
             Some(10),
             None,
             Some("test-key"),
@@ -272,6 +291,7 @@ mod tests {
         run(
             1,
             "2025-01-01",
+            None,
             None,
             None,
             None,
