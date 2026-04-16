@@ -99,7 +99,7 @@ Fetch aggregated metrics for an app. Outputs NDJSON to stdout by default.
 - `--interval`: Time interval for grouping (`month`, `day`, `hour`, `minute`). When omitted, returns a single row per group for the entire time range
 - `--group-by`: JSON array of field names to group by, in addition to time period
 - `--filters`: JSON array of filter objects (see below)
-- `--timezone`: Timezone for intervals and to interpret since/until if not tz-aware (defaults to UTC)
+- `--timezone`: Timezone for intervals and to interpret since/until if not tz-aware (defaults to system timezone)
 - `--db`: Write to `metrics` table in DuckDB instead of outputting NDJSON to stdout
 
 **Deduplication in DuckDB:** Deletes all existing rows for the same `app_id` within the fetched time range before inserting new data.
