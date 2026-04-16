@@ -249,6 +249,14 @@ enum Command {
         #[arg(long)]
         filters: Option<String>,
 
+        /// Approximate sample size (integer) or sample rate (float > 0 and <= 0.5)
+        ///
+        /// Pass an integer for size-based sampling (e.g. 1000 for ~1000 rows).
+        /// Pass a float between 0 (exclusive) and 0.5 (inclusive) for rate-based
+        /// sampling (e.g. 0.1 for ~10% of rows).
+        #[arg(long)]
+        sample: Option<String>,
+
         /// Maximum number of rows to return
         #[arg(long)]
         limit: Option<i64>,
@@ -428,6 +436,7 @@ fn run(cli: Cli) -> Result<()> {
             until,
             fields,
             filters,
+            sample,
             limit,
             db,
         } => {
@@ -438,6 +447,7 @@ fn run(cli: Cli) -> Result<()> {
                 until.as_deref(),
                 fields.as_deref(),
                 filters.as_deref(),
+                sample.as_deref(),
                 limit,
                 db.as_deref(),
                 api.api_key.as_deref(),

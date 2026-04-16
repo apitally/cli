@@ -150,7 +150,7 @@ Example NDJSON output (without `--db`):
 ```
 npx @apitally/cli request-logs <app-id> --since <datetime> \
   [--until <datetime>] [--fields <json>] [--filters <json>] \
-  [--limit <n>] [--db [<path>]]
+  [--sample <n|rate>] [--limit <n>] [--db [<path>]]
 ```
 
 Fetch request log data for an app. Outputs NDJSON to stdout by default.
@@ -159,6 +159,7 @@ Fetch request log data for an app. Outputs NDJSON to stdout by default.
 - `--until`: End of time range, exclusive (ISO 8601, defaults to now)
 - `--fields`: JSON array of field names to include
 - `--filters`: JSON array of filter objects
+- `--sample`: Approximate sample size (integer, e.g. `1000`) or sample rate (float > 0 and <= 0.5, e.g. `0.1` for ~10%)
 - `--limit`: Maximum number of rows (hard cap: 1,000,000)
 - `--db`: Write to `request_logs` table in DuckDB instead of outputting NDJSON to stdout
 
