@@ -61,6 +61,41 @@ pub fn open_db(path: &Path) -> Result<duckdb::Connection> {
         .with_context(|| format!("failed to open database {}", path.display()))
 }
 
+/// If `s` is a compact relative duration (`<digits><m|h|d|w>`, e.g. `24h`, `7d`), returns the
+/// corresponding UTC instant as RFC 3339 (never naive). Otherwise returns `s` unchanged.
+pub fn resolve_relative_datetime(s: &str) -> String {
+    let b = s.as_bytes();
+    if b.len() < 2 {
+        return s.to_owned();
+    }
+    let unit = b[b.len() - 1];
+    if !matches!(unit, b'm' | b'h' | b'd' | b'w') {
+        return s.to_owned();
+    }
+    let prefix = &s[..s.len() - 1];
+    if prefix.is_empty() || !prefix.bytes().all(|c| c.is_ascii_digit()) {
+        return s.to_owned();
+    }
+    let Ok(n) = prefix.parse::<i64>() else {
+        return s.to_owned();
+    };
+    let secs = match unit {
+        b'm' => n.checked_mul(60),
+        b'h' => n.checked_mul(3600),
+        b'd' => n.checked_mul(86_400),
+        b'w' => n.checked_mul(604_800),
+        _ => None,
+    };
+    let Some(secs) = secs else {
+        return s.to_owned();
+    };
+    let duration = chrono::Duration::seconds(secs);
+    let Some(dt) = chrono::Utc::now().checked_sub_signed(duration) else {
+        return s.to_owned();
+    };
+    dt.to_rfc3339()
+}
+
 pub fn api_get(url: &str, api_key: &str, query: &[(&str, &str)]) -> Result<Response<Body>> {
     let mut req = ureq::get(url)
         .header("Api-Key", api_key)
@@ -126,6 +161,28 @@ mod tests {
         let resolved = resolve_db(Some(None)).unwrap().unwrap();
         assert!(resolved.ends_with("data.duckdb"));
         assert!(resolved.to_string_lossy().contains(".apitally"));
+    }
+
+    #[test]
+    fn test_resolve_relative_datetime() {
+        assert_eq!(
+            resolve_relative_datetime("2025-01-01T00:00:00Z"),
+            "2025-01-01T00:00:00Z"
+        );
+
+        fn assert_approximately_now_minus(out: &str, expected_secs: i64) {
+            let t: chrono::DateTime<chrono::Utc> = out.parse().expect("parse rfc3339");
+            let ago = (chrono::Utc::now() - t).num_seconds();
+            assert!(
+                (ago - expected_secs).abs() <= 3,
+                "expected ~{expected_secs}s ago, got {ago}s ({out:?})"
+            );
+        }
+
+        assert_approximately_now_minus(&resolve_relative_datetime("30m"), 30 * 60);
+        assert_approximately_now_minus(&resolve_relative_datetime("2h"), 2 * 3600);
+        assert_approximately_now_minus(&resolve_relative_datetime("3d"), 259_200);
+        assert_approximately_now_minus(&resolve_relative_datetime("1w"), 604_800);
     }
 
     #[test]

@@ -4,6 +4,8 @@ All commands accept an `--api-key <key>` flag for authentication (except `sql`).
 
 Commands that accept a `--db` flag use `~/.apitally/data.duckdb` as the default database path if no other path is specified. If the database file doesn't exist, it will be created (except for the `sql` command). When writing to tables, existing records are updated (no duplicates are created).
 
+Commands with a datetime flag (e.g. `--since`, `--until`, `--requests-since`) also accept relative durations (e.g. `30m`, `24h`, `7d`, `2w`) in addition to ISO 8601 strings.
+
 ## `auth`
 
 ```
@@ -54,7 +56,7 @@ npx @apitally/cli consumers <app-id> [--requests-since <datetime>] [--db [<path>
 
 List all consumers for an app. Use this to map consumer IDs in request logs to identifiers and names. Outputs NDJSON to stdout by default.
 
-- `--requests-since`: Only return consumers active since this datetime (ISO 8601)
+- `--requests-since`: Only return consumers active since this datetime (ISO 8601 or relative duration, e.g. 24h, 7d)
 - `--db`: Write to `consumers` table in DuckDB instead of outputting NDJSON to stdout
 
 Example NDJSON output (without `--db`):
@@ -93,8 +95,8 @@ npx @apitally/cli metrics <app-id> --since <datetime> --metrics <json> \
 
 Fetch aggregated metrics for an app. Outputs NDJSON to stdout by default.
 
-- `--since`: Start of time range, inclusive (ISO 8601, required)
-- `--until`: End of time range, exclusive (ISO 8601, defaults to now)
+- `--since`: Start of time range, inclusive (ISO 8601 or relative duration, required)
+- `--until`: End of time range, exclusive (ISO 8601 or relative duration, defaults to now)
 - `--metrics`: JSON array of metric names to include (required)
 - `--interval`: Time interval for grouping (`month`, `day`, `hour`, `minute`). When omitted, returns a single row per group for the entire time range
 - `--group-by`: JSON array of field names to group by, in addition to time period
@@ -155,8 +157,8 @@ npx @apitally/cli request-logs <app-id> --since <datetime> \
 
 Fetch request log data for an app. Outputs NDJSON to stdout by default.
 
-- `--since`: Start of time range, inclusive (ISO 8601, required)
-- `--until`: End of time range, exclusive (ISO 8601, defaults to now)
+- `--since`: Start of time range, inclusive (ISO 8601 or relative duration, required)
+- `--until`: End of time range, exclusive (ISO 8601 or relative duration, defaults to now)
 - `--fields`: JSON array of field names to include
 - `--filters`: JSON array of filter objects
 - `--sample`: Approximate sample size (integer, e.g. `1000`) or sample rate (float > 0 and <= 0.5, e.g. `0.1` for ~10%)
