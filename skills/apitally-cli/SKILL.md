@@ -196,6 +196,16 @@ WHERE app_id = <app-id>
 
 See [references/duckdb_json_functions.md](references/duckdb_json_functions.md) for more JSON functions and examples.
 
+### Date truncation and grouping
+
+Datetime columns are `TIMESTAMPTZ`. Direct casts like `timestamp::DATE` error out (no ICU extension). Use `AT TIME ZONE 'UTC'` first:
+
+```sql
+SELECT date_trunc('day', timestamp AT TIME ZONE 'UTC') AS day, count(*) AS n
+FROM request_logs WHERE app_id = <app-id> AND timestamp >= '<since>'
+GROUP BY day ORDER BY day
+```
+
 ## Exit Codes
 
 | Code | Meaning                         |

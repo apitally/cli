@@ -97,9 +97,9 @@ Fetch aggregated metrics for an app. Outputs NDJSON to stdout by default.
 
 - `--since`: Start of time range, inclusive (ISO 8601 or relative duration, required)
 - `--until`: End of time range, exclusive (ISO 8601 or relative duration, defaults to now)
-- `--metrics`: JSON array of metric names to include (required)
+- `--metrics`: Comma-separated list or JSON array of metric names to include (required)
 - `--interval`: Time interval for grouping (`month`, `day`, `hour`, `minute`). When omitted, returns a single row per group for the entire time range
-- `--group-by`: JSON array of field names to group by, in addition to time period
+- `--group-by`: Comma-separated list or JSON array of field names to group by, in addition to time period
 - `--filters`: JSON array of filter objects (see below)
 - `--timezone`: Timezone for intervals and to interpret since/until if not tz-aware (defaults to system timezone)
 - `--db`: Write to `metrics` table in DuckDB instead of outputting NDJSON to stdout
@@ -159,7 +159,7 @@ Fetch request log data for an app. Outputs NDJSON to stdout by default.
 
 - `--since`: Start of time range, inclusive (ISO 8601 or relative duration, required)
 - `--until`: End of time range, exclusive (ISO 8601 or relative duration, defaults to now)
-- `--fields`: JSON array of field names to include
+- `--fields`: Comma-separated list or JSON array of field names to include
 - `--filters`: JSON array of filter objects
 - `--sample`: Approximate sample size (integer, e.g. `1000`) or sample rate (float > 0 and <= 0.5, e.g. `0.1` for ~10%)
 - `--limit`: Maximum number of rows (hard cap: 1,000,000)
@@ -258,7 +258,7 @@ Example JSON output (without `--db`):
 
 <!-- prettier-ignore -->
 ```json
-{"timestamp":"2026-01-01T00:15:00.000Z","request_uuid":"2fbc1df6-3124-4ed1-a376-7d2c64e4d5cf","env":"prod","method":"GET","path":"/test/1","url":"https://api.example.com/test/1","consumer":"bob@example.com","request_headers":[["content-type","application/json"]],"request_size_bytes":0,"request_body_json":null,"status_code":200,"response_time_ms":122,"response_headers":[["x-request-id","abc"]],"response_size_bytes":66,"response_body_json":"{\"ok\":true}","client_ip":"203.0.113.10","client_country_iso_code":"DE","trace_id":"0000000000000000aaaaaaaaaaaaaaaa","exception":null,"logs":[{"timestamp":"2026-01-01T00:15:00.100Z","message":"handling request","level":"INFO","logger":"app","file":"main.py","line":42}],"spans":[{"span_id":"00000000000000aa","parent_span_id":null,"name":"GET /test/1","kind":"SERVER","start_time_ns":1735689600000000000,"end_time_ns":1735689600050000000,"duration_ns":50000000,"status":"OK","attributes":{"http.method":"GET"}}]}
+{"timestamp":"2026-01-01T00:15:00.000Z","request_uuid":"2fbc1df6-3124-4ed1-a376-7d2c64e4d5cf","env":"prod","method":"GET","path":"/test/1","url":"https://api.example.com/test/1","consumer_id":1,"request_headers":[["content-type","application/json"]],"request_size_bytes":0,"request_body_json":null,"status_code":200,"response_time_ms":122,"response_headers":[["x-request-id","abc"]],"response_size_bytes":66,"response_body_json":"{\"ok\":true}","client_ip":"203.0.113.10","client_country_iso_code":"DE","trace_id":"0000000000000000aaaaaaaaaaaaaaaa","exception":null,"logs":[{"timestamp":"2026-01-01T00:15:00.100Z","message":"handling request","level":"INFO","logger":"app","file":"main.py","line":42}],"spans":[{"span_id":"00000000000000aa","parent_span_id":null,"name":"GET /test/1","kind":"SERVER","start_time_ns":1735689600000000000,"end_time_ns":1735689600050000000,"duration_ns":50000000,"status":"OK","attributes":{"http.method":"GET"}}]}
 ```
 
 ## `sql`
@@ -277,7 +277,7 @@ Available tables: `apps`, `app_envs`, `consumers`, `endpoints`, `metrics`, `requ
 
 **Important:** The database may contain data from previous sessions. Always filter queries by `app_id`, time (`timestamp` for `request_logs`, `period_start`/`period_end` for `metrics`), and other relevant fields to avoid including unrelated data.
 
-DuckDB uses a [PostgreSQL-compatible SQL dialect](https://duckdb.org/docs/stable/sql/dialect/overview).
+DuckDB uses a [PostgreSQL-compatible SQL dialect](https://duckdb.org/docs/stable/sql/dialect/overview). The bundled DuckDB has no ICU extension, so `TIMESTAMPTZ` columns cannot be cast directly to `DATE`. Use `(timestamp AT TIME ZONE 'UTC')::DATE` or `date_trunc('day', timestamp AT TIME ZONE 'UTC')` for date conversion and grouping.
 
 Example output:
 
