@@ -21,7 +21,7 @@ Run commands with `npx` (no install needed):
 npx @apitally/cli <command> [--api-key <key>]
 ```
 
-A team-scoped API key is required to use the CLI. The `auth` command saves an API key to `~/.apitally/auth.json`, which is then used by all subsequent commands unless overridden by the `--api-key` flag.
+A team-scoped API key is required to use the CLI. The `auth` command saves an API key to `~/.apitally/auth.json`, which is then used by all subsequent commands unless overridden by the `--api-key` flag. If any command exits with code 3 (auth error), ask the user to run `npx @apitally/cli auth` to authenticate, then continue.
 
 All commands output NDJSON to stdout by default. With `--db`, data is written to a DuckDB database instead (`~/.apitally/data.duckdb` by default), enabling SQL queries via the `sql` command.
 
@@ -50,13 +50,11 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
 
 ## Investigation Workflow
 
-1. **Check authentication** — run `npx @apitally/cli whoami`. If it fails, ask the user to run `npx @apitally/cli auth` to authenticate.
+1. **Identify the app** — run `npx @apitally/cli apps` to list apps and get their IDs. If there is more than one app, and the correct app can't be inferred from the user's messages, ask the user which app they mean. Use the app ID consistently for all commands and SQL `WHERE` conditions throughout the investigation.
 
-2. **Identify the app** — run `npx @apitally/cli apps` to list apps and get their IDs. If there is more than one app, and the correct app can't be inferred from the user's messages, ask the user which app they mean. Use the app ID consistently for all commands and SQL `WHERE` conditions throughout the investigation.
+2. **Determine the time range** — check if the user specified a time range (e.g. "last 24 hours", "since Monday", a specific date). If not, default to the last 7 days. Use this time range consistently for `--requests-since` / `--since` / `--until` flags and SQL `WHERE` conditions throughout the investigation.
 
-3. **Determine the time range** — check if the user specified a time range (e.g. "last 24 hours", "since Monday", a specific date). If not, default to the last 7 days. Use this time range consistently for `--requests-since` / `--since` / `--until` flags and SQL `WHERE` conditions throughout the investigation.
-
-4. **Fetch supporting data if needed** — skip unless you need endpoint discovery or consumer identification.
+3. **Fetch supporting data if needed** — skip unless you need endpoint discovery or consumer identification.
    - **Endpoints**: use `endpoints` to discover available method/path combinations for filtering. Use `--method` and/or `--path` to filter (e.g. `--path '*users*'`).
 
      ```
@@ -73,7 +71,7 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
      npx @apitally/cli sql "SELECT consumer_id, identifier, name, \"group\" FROM consumers WHERE app_id = <app-id> AND identifier ILIKE '%@example.com'"
      ```
 
-5. **Fetch data** — choose based on the question. Always read the [command reference](references/commands.md) for available options.
+4. **Fetch data** — choose based on the question. Always read the [command reference](references/commands.md) for available options.
    - **Metrics** — for questions that can be answered with aggregated metrics: traffic volume, error rates, response time trends, throughput, endpoint comparisons. Use `--group-by` and `--interval` to break down by environment, endpoint, consumer, status code, or time period.
 
      ```
@@ -96,7 +94,7 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
 
    - **Both** — for broad investigations, start with metrics for an overview, then fetch request logs to drill into specifics.
 
-6. **Query DuckDB** using the `sql` command — **CRITICAL: The DuckDB database is persistent and retains data from previous fetches, including other sessions. You MUST filter your SQL queries to match the scope of your current investigation.** Always include `WHERE` conditions on `app_id`, `period_start`/`timestamp`, and any other relevant fields. Without these filters, results will include unrelated data and will be **wrong**.
+5. **Query DuckDB** using the `sql` command — **CRITICAL: The DuckDB database is persistent and retains data from previous fetches, including other sessions. You MUST filter your SQL queries to match the scope of your current investigation.** Always include `WHERE` conditions on `app_id`, `period_start`/`timestamp`, and any other relevant fields. Without these filters, results will include unrelated data and will be **wrong**.
 
    ```
    npx @apitally/cli sql "SELECT method, path, status_code, COUNT(*) as n FROM request_logs WHERE app_id = <app-id> AND timestamp >= '<since>' AND status_code >= 400 GROUP BY ALL ORDER BY n DESC"
@@ -104,7 +102,7 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
 
    Read the [DuckDB schema reference](references/duckdb_tables.md) for available tables, columns and relationships.
 
-7. **Iterate if needed** — refine filters, fetch additional fields (headers, bodies, exceptions), or widen the time range as needed.
+6. **Iterate if needed** — refine filters, fetch additional fields (headers, bodies, exceptions), or widen the time range as needed.
 
 ## Investigation Patterns
 
