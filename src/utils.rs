@@ -61,10 +61,13 @@ pub fn open_db(path: &Path) -> Result<duckdb::Connection> {
         .with_context(|| format!("failed to open database {}", path.display()))
 }
 
-/// If `s` is a compact relative duration (`<digits><m|h|d|w>`, e.g. `24h`, `7d`), returns the
-/// corresponding UTC instant as RFC 3339 (never naive). Otherwise returns `s` unchanged.
+/// If `s` is a compact duration string (`<digits><m|h|d|w>`, e.g. `24h` or `7d`) or a simple
+/// ISO 8601-style duration (`P14D`, `-P14D`, `PT24H`), returns the UTC instant that far in the
+/// past as RFC 3339. Otherwise returns `s` unchanged.
 pub fn resolve_relative_datetime(s: &str) -> String {
-    let b = s.as_bytes();
+    let normalized = s.to_ascii_lowercase();
+    let normalized = normalized.trim_start_matches(['-', 'p', 't']);
+    let b = normalized.as_bytes();
     if b.len() < 2 {
         return s.to_owned();
     }
@@ -72,7 +75,7 @@ pub fn resolve_relative_datetime(s: &str) -> String {
     if !matches!(unit, b'm' | b'h' | b'd' | b'w') {
         return s.to_owned();
     }
-    let prefix = &s[..s.len() - 1];
+    let prefix = &normalized[..normalized.len() - 1];
     if prefix.is_empty() || !prefix.bytes().all(|c| c.is_ascii_digit()) {
         return s.to_owned();
     }
@@ -197,6 +200,14 @@ mod tests {
         assert_approximately_now_minus(&resolve_relative_datetime("2h"), 2 * 3600);
         assert_approximately_now_minus(&resolve_relative_datetime("3d"), 259_200);
         assert_approximately_now_minus(&resolve_relative_datetime("1w"), 604_800);
+
+        assert_approximately_now_minus(&resolve_relative_datetime("P14D"), 14 * 86_400);
+        assert_approximately_now_minus(&resolve_relative_datetime("-P14D"), 14 * 86_400);
+        assert_approximately_now_minus(&resolve_relative_datetime("p14d"), 14 * 86_400);
+        assert_approximately_now_minus(&resolve_relative_datetime("-2H"), 2 * 3600);
+        assert_approximately_now_minus(&resolve_relative_datetime("PT24H"), 24 * 3600);
+        assert_approximately_now_minus(&resolve_relative_datetime("PT30M"), 30 * 60);
+        assert_approximately_now_minus(&resolve_relative_datetime("-PT30M"), 30 * 60);
     }
 
     #[test]
