@@ -148,9 +148,8 @@ enum Command {
 
         /// JSON array or comma-separated list of metric names to include
         ///
-        /// Available metrics: requests, requests_per_minute, bytes_received,
-        /// bytes_sent, client_errors, server_errors, error_rate,
-        /// response_time_p50, response_time_p75, response_time_p95.
+        /// Available metrics: requests, requests_per_minute, bytes_received, bytes_sent, client_errors, server_errors, error_rate,
+        /// response_time_p50, response_time_p75, response_time_p90, response_time_p95, response_time_p99.
         #[arg(long)]
         metrics: String,
 

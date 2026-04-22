@@ -119,7 +119,9 @@ Fetch aggregated metrics for an app. Outputs NDJSON to stdout by default.
 | `error_rate`          | float   | Ratio of errors to total requests      |
 | `response_time_p50`   | integer | 50th percentile response time (ms)     |
 | `response_time_p75`   | integer | 75th percentile response time (ms)     |
+| `response_time_p90`   | integer | 90th percentile response time (ms)     |
 | `response_time_p95`   | integer | 95th percentile response time (ms)     |
+| `response_time_p99`   | integer | 99th percentile response time (ms)     |
 
 ### Group-by fields
 
