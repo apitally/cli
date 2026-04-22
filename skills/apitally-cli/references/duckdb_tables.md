@@ -78,7 +78,7 @@ CREATE TABLE metrics (
     response_time_p50   INTEGER,             -- milliseconds
     response_time_p75   INTEGER,             -- milliseconds
     response_time_p90   INTEGER,             -- milliseconds
-    response_time_p95   INTEGER              -- milliseconds
+    response_time_p95   INTEGER,             -- milliseconds
     response_time_p99   INTEGER              -- milliseconds
 );
 ```

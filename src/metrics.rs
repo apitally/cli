@@ -30,7 +30,7 @@ pub(crate) fn ensure_metrics_table(conn: &duckdb::Connection) -> Result<()> {
             response_time_p75   INTEGER,
             response_time_p90   INTEGER,
             response_time_p95   INTEGER,
-            response_time_p99   INTEGER,
+            response_time_p99   INTEGER
         )",
     )?;
     Ok(())
