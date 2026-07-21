@@ -3,26 +3,33 @@ on:
   push:
     branches:
       - main
-    paths:
-      - ".github/workflows/tests.yaml"
-      - "Cargo.lock"
-      - "Cargo.toml"
-      - "npm/**"
-      - "src/**"
   pull_request:
-    paths:
-      - ".github/workflows/tests.yaml"
-      - "Cargo.lock"
-      - "Cargo.toml"
-      - "npm/**"
-      - "src/**"
   workflow_dispatch:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        id: filter
+        with:
+          filters: |
+            rust:
+              - ".github/workflows/tests.yaml"
+              - "Cargo.lock"
+              - "Cargo.toml"
+              - "npm/**"
+              - "src/**"
+
   check:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -38,6 +45,8 @@ jobs:
         run: npx -y @biomejs/biome check npm/
 
   test:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -58,6 +67,7 @@ jobs:
 
   ci-gate:
     needs:
+      - changes
       - check
       - test
     if: always()
