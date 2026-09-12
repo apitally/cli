@@ -40,7 +40,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
           components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - name: Check formatting
         run: cargo fmt --check
       - name: Run clippy
@@ -60,7 +60,7 @@ jobs:
       - uses: taiki-e/install-action@a164de717a0ee9284c2d9db1c6016a4c339cd333 # v2
         with:
           tool: cargo-llvm-cov
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - name: Run tests with coverage
         run: cargo llvm-cov --cobertura --output-path coverage.xml
       - name: Upload coverage to Codecov
