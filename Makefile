@@ -1,7 +1,7 @@
 .PHONY: install check test test-coverage build
 
 install:
-	asdf install
+	mise install
 	cargo install cargo-llvm-cov
 	rustup component add llvm-tools-preview
 
