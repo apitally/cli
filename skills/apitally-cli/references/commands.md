@@ -1,6 +1,6 @@
 # Command Reference
 
-API commands accept an `--api-key <key>` flag for authentication (`sql` and `reset-db` use only the local database). API key resolution order: `--api-key` flag > `APITALLY_API_KEY` env var > `~/.apitally/auth.json`.
+All commands except `sql` and `reset-db` accept `--api-key <key>` for authentication. API key resolution order: `--api-key` flag > `APITALLY_API_KEY` env var > `~/.apitally/auth.json`.
 
 Commands that accept a `--db` flag use `~/.apitally/data.duckdb` as the default database path if no other path is specified. If the database file doesn't exist, it will be created (except for the `sql` command). When writing to tables, existing records are updated (no duplicates are created).
 
