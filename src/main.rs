@@ -321,13 +321,11 @@ enum Command {
         ///   duration_ns: int64 nanoseconds (1000000 ns = 1 ms)
         ///
         /// Opt-in fields:
-        ///   attributes: object mapping attribute names to JSON-encoded strings
+        ///   attributes: object mapping attribute names to JSON values
         ///   events: array of {timestamp, name, attributes}; timestamps have nanosecond precision
         ///   scope_name: instrumentation scope name, or null
         ///   scope_version: instrumentation scope version, or null
         ///
-        /// Event attributes use the same raw JSON-encoded string values as span
-        /// attributes. Decode each value separately; filters use decoded scalars.
         /// Selected empty attributes/events are {} and [], not null. Output IDs
         /// are lowercase hex. Database event timestamps represent UTC.
         #[arg(long, verbatim_doc_comment)]
@@ -366,8 +364,8 @@ enum Command {
         /// comparisons/patterns/membership (no null operators); numbers support
         /// equality/ordering/membership; booleans only eq/neq/in/not_in. Lists
         /// must be nonempty with one scalar type (integers and finite floats may
-        /// mix). Compare decoded scalars, not JSON-encoded strings. Use existence
-        /// checks for array/object attributes. Comparisons require a present key
+        /// mix). Use existence checks for array/object/null attributes.
+        /// Comparisons require a present key
         /// of the same JSON type; missing keys do not satisfy neq/not_in.
         ///
         /// Event clauses match any qualifying event; not_exists negates that

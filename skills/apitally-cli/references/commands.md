@@ -304,14 +304,14 @@ Without `--db`, the CLI streams NDJSON to stdout unchanged. With `--db`, it stre
 | `start_time_ns` | int64 | yes | yes | Unix epoch nanoseconds |
 | `end_time_ns` | int64 | yes | no | Unix epoch nanoseconds |
 | `duration_ns` | int64 | yes | no | Nanoseconds, not milliseconds |
-| `attributes` | object of strings | no | no | Attribute names mapped to JSON-encoded value strings |
+| `attributes` | object | no | no | Attribute names mapped to JSON values (strings, numbers, booleans, arrays, objects, or null) |
 | `events` | array of objects | no | no | Each event has `timestamp`, `name`, and `attributes` |
 | `scope_name` | string or null | no | no | Instrumentation scope; empty becomes null |
 | `scope_version` | string or null | no | no | Instrumentation scope version; empty becomes null |
 
 Omitting `--fields` selects defaults. Providing it replaces the default set: the API prepends `trace_id`, `span_id`, and `start_time_ns`, removes duplicates, then includes requested fields. `--fields '[]'` returns only those three required fields. In DB mode, refetching required-only fields clears all optional columns of matching rows.
 
-Event timestamps are ISO datetimes with nanosecond precision in NDJSON. Span and event attribute maps contain **JSON-encoded strings**, not decoded JSON scalars. Selected empty collections are `{}` and `[]`, distinct from omitted fields (stored as SQL `NULL`). DuckDB stores attributes and events as JSON, preserving encoded strings and event nanoseconds. Event timestamps in database JSON represent UTC but can have different formatting from NDJSON, including no timezone suffix. See [JSON extraction examples](duckdb_json_functions.md#span-attributes-and-events).
+Span and event attributes contain native JSON values. Event timestamps are ISO 8601 UTC strings with nanosecond precision, also preserved in DuckDB JSON. Selected empty collections are `{}` and `[]`; omitted fields become SQL `NULL`. See [JSON extraction examples](duckdb_json_functions.md#span-attributes-and-events).
 
 ### Filters
 
@@ -352,12 +352,11 @@ Field and operator names are trimmed and lowercased. Enum values are case-sensit
 
 - `attributes` requires `key` for every operator.
 - `events` accepts `key`, `event_name`, or both. Without `key`, supply `event_name` and use only `exists`/`not_exists`.
-- Supply decoded scalar values in filters: `"postgresql"`, `2`, or `true`, not their JSON-encoded output strings.
 - String attributes support `eq`, `neq`, `in`, `not_in`, `like`, `not_like`, `ilike`, `not_ilike`, `contains`, `not_contains`.
 - Numeric attributes support `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`. Integers and finite floats can be mixed in a membership list.
 - Boolean attributes support only `eq`, `neq`, `in`, `not_in`.
 - Attribute membership lists must be nonempty and use one scalar type, except the integer/float mixture. Arrays and objects are not comparison values; use existence checks for those attributes.
-- Comparisons require the key to exist and its decoded JSON type to match the scalar type. Missing keys do not satisfy `neq` or `not_in`.
+- Comparisons require the key to exist and its JSON type to match the scalar type. Missing keys do not satisfy `neq` or `not_in`.
 - An event clause matches when **any event** satisfies its name/key/value conditions. `not_exists` negates that existence. Event `neq` still means any event with a different value, not that no event equals the value.
 - Separate event clauses may match different events in one span. Selecting `events` returns all events for matching spans, not only matching events.
 
@@ -394,7 +393,7 @@ Default NDJSON:
 With `--fields attributes,events` (required fields are still included):
 
 ```json
-{"trace_id":"0123456789abcdef0123456789abcdef","span_id":"0123456789abcdef","start_time_ns":1767225600000000000,"attributes":{"db.system":"\"postgresql\"","retry.count":"2","cached":"true"},"events":[{"timestamp":"2026-01-01T00:00:00.123456001Z","name":"exception","attributes":{"exception.type":"\"TimeoutError\""}}]}
+{"trace_id":"0123456789abcdef0123456789abcdef","span_id":"0123456789abcdef","start_time_ns":1767225600000000000,"attributes":{"db.system":"postgresql","retry.count":2,"cached":true},"events":[{"timestamp":"2026-01-01T00:00:00.123456001Z","name":"exception","attributes":{"exception.type":"TimeoutError"}}]}
 ```
 
 ### Command examples
@@ -427,7 +426,7 @@ Get full details for a specific request identified by its UUID, including header
 
 - `--db`: Write to `request_logs`, `application_logs`, and `spans` tables in DuckDB instead of outputting JSON to stdout
 
-Spans belong to the enclosing response's `trace_id`. Individual span objects do not repeat that ID. Span attributes are raw JSON-encoded value strings, just as in `traces` output.
+Spans belong to the enclosing response's `trace_id`. Individual span objects do not repeat that ID. Span attributes contain native JSON values, as in `traces` output.
 
 Both `request-details --db` and `traces --db` populate the shared `spans` table, keyed by `(app_id, trace_id, span_id)`. Each command replaces complete matching rows and clears omitted columns. Request-details span objects omit `env`, `events`, `scope_name`, and `scope_version`, so refetching this way sets those columns to `NULL`, even if `traces` populated them earlier. The request's environment is not substituted for a span's environment. Unreturned spans remain, including on an empty response.
 
@@ -446,7 +445,7 @@ Example JSON output (without `--db`):
 
 <!-- prettier-ignore -->
 ```json
-{"timestamp":"2026-01-01T00:15:00.000Z","request_uuid":"2fbc1df6-3124-4ed1-a376-7d2c64e4d5cf","env":"prod","method":"GET","path":"/test/1","url":"https://api.example.com/test/1","consumer_id":1,"request_headers":[["content-type","application/json"]],"request_size_bytes":0,"request_body_json":null,"status_code":200,"response_time_ms":122,"response_headers":[["x-request-id","abc"]],"response_size_bytes":66,"response_body_json":"{\"ok\":true}","client_ip":"203.0.113.10","client_country_iso_code":"DE","trace_id":"0123456789abcdef0123456789abcdef","exception":null,"logs":[{"timestamp":"2026-01-01T00:15:00.100Z","message":"handling request","level":"INFO","logger":"app","file":"main.py","line":42}],"spans":[{"span_id":"0123456789abcdef","parent_span_id":null,"name":"GET /test/1","kind":"SERVER","start_time_ns":1767226500000000000,"end_time_ns":1767226500050000000,"duration_ns":50000000,"status":"OK","attributes":{"http.method":"\"GET\""}}]}
+{"timestamp":"2026-01-01T00:15:00.000Z","request_uuid":"2fbc1df6-3124-4ed1-a376-7d2c64e4d5cf","env":"prod","method":"GET","path":"/test/1","url":"https://api.example.com/test/1","consumer_id":1,"request_headers":[["content-type","application/json"]],"request_size_bytes":0,"request_body_json":null,"status_code":200,"response_time_ms":122,"response_headers":[["x-request-id","abc"]],"response_size_bytes":66,"response_body_json":"{\"ok\":true}","client_ip":"203.0.113.10","client_country_iso_code":"DE","trace_id":"0123456789abcdef0123456789abcdef","exception":null,"logs":[{"timestamp":"2026-01-01T00:15:00.100Z","message":"handling request","level":"INFO","logger":"app","file":"main.py","line":42}],"spans":[{"span_id":"0123456789abcdef","parent_span_id":null,"name":"GET /test/1","kind":"SERVER","start_time_ns":1767226500000000000,"end_time_ns":1767226500050000000,"duration_ns":50000000,"status":"OK","attributes":{"http.method":"GET"}}]}
 ```
 
 ## `sql`

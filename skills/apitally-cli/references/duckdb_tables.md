@@ -164,7 +164,9 @@ Request-details takes `trace_id` from its enclosing response. Its span objects o
 
 `start_time_ns` and `end_time_ns` are Unix epoch nanoseconds; `duration_ns` is a duration in nanoseconds. Use integer bounds for exact time comparisons and `duration_ns / 1000000.0` for milliseconds. Scope persistent queries by `app_id` and relevant trace IDs or start-time bounds.
 
-`attributes` is a JSON object of raw JSON-encoded value strings. `events` is a JSON array of objects with `timestamp`, `name`, and similarly encoded `attributes`. Selected empty collections are `{}` and `[]`; omitted fields are SQL `NULL`. Event timestamps retain nanosecond precision and represent UTC, but JSON formatting may differ from NDJSON (including no timezone suffix). See [attribute and event SQL examples](duckdb_json_functions.md#span-attributes-and-events).
+`attributes` is a JSON object with native JSON values. `events` is a JSON array of objects with `timestamp`, `name`, and `attributes`. Event timestamps are ISO 8601 UTC strings with nanosecond precision. Selected empty collections are `{}` and `[]`; omitted fields are SQL `NULL`. See [attribute and event SQL examples](duckdb_json_functions.md#span-attributes-and-events).
+
+Refetch older local span rows with JSON-encoded attribute strings to use these queries.
 
 ### Legacy span schema
 

@@ -74,49 +74,38 @@ WHERE app_id = 123
 
 ## Span Attributes and Events
 
-Both `traces` and `request-details` preserve raw attribute maps. For example:
+Span and event attributes contain native JSON values, for example:
 
 ```json
-{"db.system":"\"postgresql\"","retry.count":"2","cached":"true"}
+{"db.system":"postgresql","retry.count":2,"cached":true}
 ```
 
-Decode two layers: extract the map's string value, cast that string to JSON, then extract its scalar at `$`. Quote keys containing literal dots as a single JSONPath key (`$."db.system"`), not nested fields. These examples assume app `1` and the shown trace ID were fetched with `attributes` and `events` selected. Substitute your investigation's IDs.
+Quote keys containing literal dots as a single JSONPath key (`$."db.system"`). These examples assume app `1` and the shown trace ID were fetched with `attributes` and `events` selected. Substitute your investigation's IDs.
 
 ```sql
 SELECT span_id,
-       json_extract_string(attributes, '$."db.system"') AS encoded_db_system,
-       json_extract_string(
-           json_extract_string(attributes, '$."db.system"')::JSON, '$'
-       ) AS db_system,
-       json_extract_string(
-           json_extract_string(attributes, '$."retry.count"')::JSON, '$'
-       )::BIGINT AS retry_count,
-       json_extract_string(
-           json_extract_string(attributes, '$.cached')::JSON, '$'
-       )::BOOLEAN AS cached
+       attributes->>'$."db.system"' AS db_system,
+       (attributes->>'$."retry.count"')::BIGINT AS retry_count,
+       (attributes->>'$.cached')::BOOLEAN AS cached
 FROM spans
 WHERE app_id = 1
   AND trace_id = '0123456789abcdef0123456789abcdef';
 ```
 
-`encoded_db_system` contains `"postgresql"` including the quotes; `db_system` is `postgresql`. `retry_count` is the integer `2` and `cached` is boolean `true`. An omitted attributes column is SQL `NULL`; a selected empty map is `{}`.
-
-Expand the events array with `json_each` and decode event attribute values the same way:
+Expand events with `json_each`:
 
 ```sql
 SELECT s.span_id,
        event.value->>'$.timestamp' AS event_timestamp_utc,
        event.value->>'$.name' AS event_name,
-       json_extract_string(
-           json_extract_string(event.value, '$.attributes."exception.type"')::JSON, '$'
-       ) AS exception_type
+       event.value->>'$.attributes."exception.type"' AS exception_type
 FROM spans s, json_each(s.events) AS event
 WHERE s.app_id = 1
   AND s.trace_id = '0123456789abcdef0123456789abcdef'
   AND (event.value->>'$.name') = 'exception';
 ```
 
-Event timestamp strings represent UTC and retain nanosecond digits. Database JSON may use a space instead of `T` and omit `Z`, unlike API NDJSON; do not infer local time from that formatting. Keep the string to preserve all digits; casting to `TIMESTAMPTZ` can lose sub-microsecond precision. Use integer `start_time_ns`/`end_time_ns` for exact span-time comparisons.
+Event timestamps are ISO 8601 UTC strings. Keep them as strings to preserve nanoseconds; casting to `TIMESTAMPTZ` can lose sub-microsecond precision. Use integer `start_time_ns`/`end_time_ns` for exact span-time comparisons.
 
 ## Scalar Functions
 

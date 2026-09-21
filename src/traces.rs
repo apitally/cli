@@ -1,12 +1,8 @@
 use std::io;
 use std::path::Path;
-use std::sync::Arc;
 
-use anyhow::{Result, bail};
-use duckdb::arrow::compute::cast;
-use duckdb::arrow::datatypes::{DataType, Schema, TimeUnit};
+use anyhow::Result;
 use duckdb::arrow::ipc::reader::StreamReader;
-use duckdb::arrow::record_batch::RecordBatch;
 use duckdb::vtab::arrow::{ArrowVTab, arrow_recordbatch_to_query_params};
 
 use crate::auth::{resolve_api_base_url, resolve_api_key};
@@ -83,18 +79,9 @@ pub fn run(
             .map(|f| f.name().as_str())
             .collect::<Vec<_>>()
             .join(", ");
-        let projection = schema
-            .fields()
-            .iter()
-            .map(|f| match f.name().as_str() {
-                "attributes" | "events" => format!("to_json({})", f.name()),
-                name => name.to_owned(),
-            })
-            .collect::<Vec<_>>()
-            .join(", ");
         let insert_sql = format!(
             "INSERT INTO spans_staging (app_id, {col_list}) \
-             SELECT {app_id}, {projection} FROM arrow(?, ?)"
+             SELECT {app_id}, {col_list} FROM arrow(?, ?)"
         );
 
         const CHUNK_SIZE: usize = 2048; // DuckDB's vector size
@@ -105,7 +92,7 @@ pub fn run(
         );
 
         for batch in reader {
-            let batch = remove_event_timezone(batch?)?;
+            let batch = batch?;
             total += batch.num_rows();
             for offset in (0..batch.num_rows()).step_by(CHUNK_SIZE) {
                 let chunk = batch.slice(offset, (batch.num_rows() - offset).min(CHUNK_SIZE));
@@ -167,57 +154,16 @@ pub(crate) fn ensure_spans_table(conn: &duckdb::Connection) -> Result<()> {
     Ok(())
 }
 
-fn remove_event_timezone(batch: RecordBatch) -> Result<RecordBatch> {
-    let schema = batch.schema();
-    let Ok(index) = schema.index_of("events") else {
-        return Ok(batch);
-    };
-    let DataType::List(event_field) = schema.field(index).data_type() else {
-        bail!("expected Arrow events to be a list");
-    };
-    let DataType::Struct(event_fields) = event_field.data_type() else {
-        bail!("expected Arrow events to contain named structs");
-    };
-    // DuckDB imports timezone-aware timestamps at microsecond precision.
-    // Casting away the timezone preserves epoch nanoseconds as UTC TIMESTAMP_NS.
-    let event_fields = event_fields
-        .iter()
-        .map(|field| {
-            if field.name() == "timestamp" {
-                Arc::new(
-                    field
-                        .as_ref()
-                        .clone()
-                        .with_data_type(DataType::Timestamp(TimeUnit::Nanosecond, None)),
-                )
-            } else {
-                field.clone()
-            }
-        })
-        .collect();
-    let events_type = DataType::List(Arc::new(
-        event_field
-            .as_ref()
-            .clone()
-            .with_data_type(DataType::Struct(event_fields)),
-    ));
-    let (_, mut columns, _) = batch.into_parts();
-    columns[index] = cast(&columns[index], &events_type)?;
-    let mut fields = schema.fields().to_vec();
-    fields[index] = Arc::new(schema.field(index).clone().with_data_type(events_type));
-    Ok(RecordBatch::try_new(
-        Arc::new(Schema::new_with_metadata(fields, schema.metadata().clone())),
-        columns,
-    )?)
-}
-
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
     use crate::utils::test_utils::{parse_ndjson, temp_db};
     use duckdb::arrow::array::StringArray;
     use duckdb::arrow::compute::concat_batches;
     use duckdb::arrow::ipc::writer::StreamWriter;
+    use duckdb::arrow::record_batch::RecordBatch;
     use serde_json::json;
 
     const ALL_FIELDS: &str = "trace_id,span_id,parent_span_id,env,name,kind,status,start_time_ns,end_time_ns,duration_ns,attributes,events,scope_name,scope_version";
@@ -413,37 +359,37 @@ mod tests {
             .unwrap();
         assert_eq!(stored.len(), expected.len());
         for (stored, expected) in stored.iter().zip(&mut expected) {
-            let mut stored: serde_json::Value = serde_json::from_str(stored).unwrap();
+            let stored: serde_json::Value = serde_json::from_str(stored).unwrap();
             expected["app_id"] = json!(42);
-            for (event, expected_event) in stored["events"]
-                .as_array_mut()
-                .unwrap()
-                .iter_mut()
-                .zip(expected["events"].as_array().unwrap())
-            {
-                let timestamp = event["timestamp"].as_str().unwrap().replace(' ', "T") + "Z";
-                let timestamp = chrono::DateTime::parse_from_rfc3339(&timestamp).unwrap();
-                let expected_timestamp = chrono::DateTime::parse_from_rfc3339(
-                    expected_event["timestamp"].as_str().unwrap(),
-                )
-                .unwrap();
-                assert_eq!(
-                    timestamp.timestamp_nanos_opt(),
-                    expected_timestamp.timestamp_nanos_opt()
-                );
-                event["timestamp"] = expected_event["timestamp"].clone();
-            }
             assert_eq!(&stored, expected);
         }
-        let (db_system, retry_count, cached, exception_type, event_time): (String, i64, bool, String, i64) = conn.query_row(
-            r#"SELECT
-                json_extract_string(json_extract_string(attributes, '$."db.system"'), '$'),
+        let (db_system, retry_count, cached, exception_type, event_time): (
+            String,
+            i64,
+            bool,
+            String,
+            i64,
+        ) = conn
+            .query_row(
+                r#"SELECT
+                json_extract_string(attributes, '$."db.system"'),
                 json_extract_string(attributes, '$."retry.count"')::BIGINT,
                 json_extract_string(attributes, '$."cached"')::BOOLEAN,
-                json_extract_string(json_extract_string(events, '$[0].attributes."exception.type"'), '$'),
+                json_extract_string(events, '$[0].attributes."exception.type"'),
                 epoch_ns(json_extract_string(events, '$[0].timestamp')::TIMESTAMP_NS)
-               FROM spans WHERE span_id = '0000000000000002'"#, [],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?))).unwrap();
+               FROM spans WHERE span_id = '0000000000000002'"#,
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )
+            .unwrap();
         assert_eq!(
             (
                 db_system.as_str(),
@@ -491,7 +437,9 @@ mod tests {
             .query_row(
                 "SELECT count(*) FROM spans WHERE app_id = 42 \
             AND trace_id = '0123456789abcdef0123456789abcdef' AND env IS NULL AND events IS NULL \
-            AND scope_name IS NULL AND scope_version IS NULL",
+            AND scope_name IS NULL AND scope_version IS NULL \
+            AND json_extract(attributes, '$.\"retry.count\"') = 2 \
+            AND json_type(attributes, '$.\"cached\"') = 'BOOLEAN'",
                 [],
                 |row| row.get(0),
             )
