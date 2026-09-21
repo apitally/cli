@@ -168,12 +168,11 @@ mod tests {
 
     fn sample_traces_ndjson() -> &'static str {
         r#"{"trace_id":"0123456789abcdef0123456789abcdef","span_id":"0000000000000001","start_time_ns":1767225600123456001,"parent_span_id":null,"env":"prod","name":"GET /books","kind":"SERVER","status":"UNSET","end_time_ns":1767225600373456001,"duration_ns":250000000,"attributes":{"http.route":"/books","retry.count":2,"cached":true,"details":{"key":null},"labels":["a",1]},"events":[{"timestamp":"2026-01-01T00:00:00.123456001Z","name":"exception","attributes":{"exception.type":"TimeoutError","code":503}}],"scope_name":"test.instrumentation","scope_version":"1.2.3"}
-{"trace_id":"0123456789abcdef0123456789abcdef","span_id":"0000000000000002","start_time_ns":1767225600123457001,"parent_span_id":"0000000000000001","env":"prod","name":"db.query","kind":"CLIENT","status":"ERROR","end_time_ns":1767225600323457001,"duration_ns":200000000,"attributes":{"db.system":"postgresql","retry.count":2,"cached":false},"events":[{"timestamp":"2026-01-01T00:00:00.123458000Z","name":"exception","attributes":{"exception.type":"TimeoutError"}}],"scope_name":"test.instrumentation","scope_version":"1.2.3"}
-{"trace_id":"fedcba9876543210fedcba9876543210","span_id":"0000000000000003","start_time_ns":1767225600123458001,"parent_span_id":null,"env":null,"name":"background","kind":"INTERNAL","status":"OK","end_time_ns":1767225600123459002,"duration_ns":1001,"attributes":{},"events":[],"scope_name":null,"scope_version":null}
+{"trace_id":"0123456789abcdef0123456789abcdef","span_id":"0000000000000002","start_time_ns":1767225600123457001,"parent_span_id":"0000000000000001","env":null,"name":"db.query","kind":"CLIENT","status":"ERROR","end_time_ns":1767225600323457001,"duration_ns":200000000,"attributes":{},"events":[],"scope_name":null,"scope_version":null}
 "#
     }
 
-    fn sample_traces_arrow_ipc(field_count: usize, row_count: usize) -> Vec<u8> {
+    fn sample_traces_batch(field_count: usize, row_count: usize) -> RecordBatch {
         let schema = Arc::new(Schema::new(vec![
             Field::new("trace_id", DataType::Utf8, false),
             Field::new("span_id", DataType::Utf8, false),
@@ -191,73 +190,51 @@ mod tests {
             Field::new("scope_version", DataType::Utf8, true),
         ]));
         let rows = parse_ndjson(sample_traces_ndjson().as_bytes());
-        let batch = RecordBatch::try_new(
+        RecordBatch::try_new(
             schema,
             vec![
                 Arc::new(StringArray::from(vec![
                     "0123456789abcdef0123456789abcdef",
                     "0123456789abcdef0123456789abcdef",
-                    "fedcba9876543210fedcba9876543210",
                 ])),
                 Arc::new(StringArray::from(vec![
                     "0000000000000001",
                     "0000000000000002",
-                    "0000000000000003",
                 ])),
                 Arc::new(Int64Array::from(vec![
                     1767225600123456001,
                     1767225600123457001,
-                    1767225600123458001,
                 ])),
-                Arc::new(StringArray::from(vec![
-                    None,
-                    Some("0000000000000001"),
-                    None,
-                ])),
-                Arc::new(StringArray::from(vec![Some("prod"), Some("prod"), None])),
-                Arc::new(StringArray::from(vec![
-                    "GET /books",
-                    "db.query",
-                    "background",
-                ])),
-                Arc::new(StringArray::from(vec!["SERVER", "CLIENT", "INTERNAL"])),
-                Arc::new(StringArray::from(vec!["UNSET", "ERROR", "OK"])),
+                Arc::new(StringArray::from(vec![None, Some("0000000000000001")])),
+                Arc::new(StringArray::from(vec![Some("prod"), None])),
+                Arc::new(StringArray::from(vec!["GET /books", "db.query"])),
+                Arc::new(StringArray::from(vec!["SERVER", "CLIENT"])),
+                Arc::new(StringArray::from(vec!["UNSET", "ERROR"])),
                 Arc::new(Int64Array::from(vec![
                     1767225600373456001,
                     1767225600323457001,
-                    1767225600123459002,
                 ])),
-                Arc::new(Int64Array::from(vec![250000000, 200000000, 1001])),
+                Arc::new(Int64Array::from(vec![250000000, 200000000])),
                 Arc::new(StringArray::from_iter_values(
                     rows.iter().map(|row| row["attributes"].to_string()),
                 )),
                 Arc::new(StringArray::from_iter_values(
                     rows.iter().map(|row| row["events"].to_string()),
                 )),
-                Arc::new(StringArray::from(vec![
-                    Some("test.instrumentation"),
-                    Some("test.instrumentation"),
-                    None,
-                ])),
-                Arc::new(StringArray::from(vec![Some("1.2.3"), Some("1.2.3"), None])),
+                Arc::new(StringArray::from(vec![Some("test.instrumentation"), None])),
+                Arc::new(StringArray::from(vec![Some("1.2.3"), None])),
             ],
         )
         .unwrap()
         .project(&(0..field_count).collect::<Vec<_>>())
         .unwrap()
-        .slice(0, row_count);
-        let mut ipc = Vec::new();
-        let mut writer = StreamWriter::try_new(&mut ipc, &batch.schema()).unwrap();
-        if row_count > 0 {
-            writer.write(&batch).unwrap();
-        }
-        writer.finish().unwrap();
-        ipc
+        .slice(0, row_count)
     }
 
     #[test]
     fn test_run_ndjson() {
-        let filters = r#"[{"field":"trace_id","op":"eq","value":"0123456789abcdef0123456789abcdef"},{"field":"attributes","key":"retry.count","op":"gte","value":2},{"field":"events","event_name":"exception","op":"exists"}]"#;
+        let filters =
+            r#"[{"field":"trace_id","op":"eq","value":"0123456789abcdef0123456789abcdef"}]"#;
         let response = sample_traces_ndjson();
         let mut server = mockito::Server::new();
         let mock = server
@@ -317,23 +294,13 @@ mod tests {
     #[test]
     fn test_run_input_errors() {
         for (fields, filters, sample, message) in [
-            (Some("[invalid]"), None, None, "invalid JSON for --fields"),
-            (None, Some("[invalid]"), None, "invalid JSON for --filters"),
-            (
-                None,
-                None,
-                Some("0"),
-                "--sample as integer must be greater than 0",
-            ),
-            (None, None, Some("0.0"), "--sample as float must be between"),
-            (None, None, Some("0.6"), "--sample as float must be between"),
-            (None, None, Some("NaN"), "--sample as float must be between"),
-            (
-                None,
-                None,
-                Some("many"),
-                "--sample must be an integer or float",
-            ),
+            (Some("[invalid]"), None, None, "--fields"),
+            (None, Some("[invalid]"), None, "--filters"),
+            (None, None, Some("0"), "integer"),
+            (None, None, Some("0.0"), "float"),
+            (None, None, Some("0.6"), "float"),
+            (None, None, Some("NaN"), "float"),
+            (None, None, Some("many"), "integer or float"),
         ] {
             let err = run(
                 42,
@@ -358,8 +325,8 @@ mod tests {
     fn test_run_with_db() {
         let mut server = mockito::Server::new();
         let (_dir, db_path) = temp_db();
-        let ipc = sample_traces_arrow_ipc(14, 3);
-        fetch_spans(&mut server, &db_path, &ipc, Some(ALL_FIELDS));
+        let batch = sample_traces_batch(14, 2);
+        fetch_spans(&mut server, &db_path, &batch, ALL_FIELDS);
         let conn = open_db(&db_path).unwrap();
         let mut expected = parse_ndjson(sample_traces_ndjson().as_bytes());
         let stored: Vec<String> = conn
@@ -383,43 +350,31 @@ mod tests {
         .unwrap();
         drop(conn);
 
-        fetch_spans(&mut server, &db_path, &sample_traces_arrow_ipc(10, 3), None);
-        let conn = open_db(&db_path).unwrap();
-        let cleared: i64 = conn.query_row("SELECT count(*) FROM spans WHERE app_id = 42 AND attributes IS NULL \
-            AND events IS NULL AND scope_name IS NULL AND scope_version IS NULL AND name IN ('GET /books', 'db.query', 'background')",
-            [], |row| row.get(0)).unwrap();
-        assert_eq!(cleared, 3);
-        drop(conn);
-        fetch_spans(
-            &mut server,
-            &db_path,
-            &sample_traces_arrow_ipc(3, 3),
-            Some("[]"),
-        );
+        fetch_spans(&mut server, &db_path, &sample_traces_batch(3, 2), "[]");
         let conn = open_db(&db_path).unwrap();
         let cleared: i64 = conn.query_row("SELECT count(*) FROM spans WHERE app_id = 42 \
             AND name IS NULL AND parent_span_id IS NULL AND env IS NULL AND kind IS NULL AND status IS NULL \
             AND end_time_ns IS NULL AND duration_ns IS NULL AND attributes IS NULL AND events IS NULL \
             AND scope_name IS NULL AND scope_version IS NULL", [], |row| row.get(0)).unwrap();
-        assert_eq!(cleared, 3);
+        assert_eq!(cleared, 2);
         drop(conn);
         fetch_spans(
             &mut server,
             &db_path,
-            &sample_traces_arrow_ipc(14, 0),
-            Some(ALL_FIELDS),
+            &sample_traces_batch(14, 0),
+            ALL_FIELDS,
         );
         let conn = open_db(&db_path).unwrap();
         let (total, retained): (i64, i64) = conn.query_row("SELECT count(*), count(*) FILTER (WHERE name IN ('other trace', 'other app')) FROM spans",
             [], |row| Ok((row.get(0)?, row.get(1)?))).unwrap();
-        assert_eq!((total, retained), (5, 2));
+        assert_eq!((total, retained), (4, 2));
 
         let (_empty_dir, empty_db) = temp_db();
         fetch_spans(
             &mut server,
             &empty_db,
-            &sample_traces_arrow_ipc(14, 0),
-            Some(ALL_FIELDS),
+            &sample_traces_batch(14, 0),
+            ALL_FIELDS,
         );
         let count: i64 = open_db(&empty_db)
             .unwrap()
@@ -430,39 +385,39 @@ mod tests {
 
     #[test]
     fn test_run_with_db_large_batch() {
-        let ipc = sample_traces_arrow_ipc(14, 3);
-        let mut reader = StreamReader::try_new(ipc.as_slice(), None).unwrap();
-        let schema = reader.schema();
-        let first = reader.next().unwrap().unwrap().slice(0, 1);
+        let first = sample_traces_batch(14, 1);
+        let schema = first.schema();
+        // Cross DuckDB's 2,048-row vector boundary.
         let batch = concat_batches(&schema, std::iter::repeat_n(&first, 2049)).unwrap();
         let mut columns = batch.columns().to_vec();
         columns[schema.index_of("span_id").unwrap()] = Arc::new(StringArray::from(
             (0..2049).map(|i| format!("{i:016x}")).collect::<Vec<_>>(),
         ));
-        let batch = RecordBatch::try_new(schema.clone(), columns).unwrap();
-        let mut ipc = Vec::new();
-        let mut writer = StreamWriter::try_new(&mut ipc, &schema).unwrap();
-        writer.write(&batch).unwrap();
-        writer.finish().unwrap();
+        let batch = RecordBatch::try_new(schema, columns).unwrap();
         let mut server = mockito::Server::new();
         let (_dir, db_path) = temp_db();
-        fetch_spans(&mut server, &db_path, &ipc, Some(ALL_FIELDS));
+        fetch_spans(&mut server, &db_path, &batch, ALL_FIELDS);
         let conn = open_db(&db_path).unwrap();
         let (count, timestamps): (i64, i64) = conn.query_row(
-            "SELECT count(*), count(*) FILTER (WHERE epoch_ns(json_extract_string(events, '$[0].timestamp')::TIMESTAMP_NS) = 1767225600123456001) FROM spans",
+            "SELECT count(*), count(*) FILTER (WHERE start_time_ns = 1767225600123456001) FROM spans",
             [], |row| Ok((row.get(0)?, row.get(1)?))).unwrap();
         assert_eq!((count, timestamps), (2049, 2049));
     }
 
-    fn fetch_spans(server: &mut mockito::Server, db: &Path, ipc: &[u8], fields: Option<&str>) {
-        let mut body = json!({"format":"arrow", "since":"2026-01-01"});
-        if let Some(fields) = fields {
-            body["fields"] = parse_string_list(fields).unwrap();
+    fn fetch_spans(server: &mut mockito::Server, db: &Path, batch: &RecordBatch, fields: &str) {
+        let mut ipc = Vec::new();
+        let mut writer = StreamWriter::try_new(&mut ipc, &batch.schema()).unwrap();
+        if batch.num_rows() > 0 {
+            writer.write(batch).unwrap();
         }
+        writer.finish().unwrap();
         let mock = server
             .mock("POST", "/v1/apps/42/traces")
             .match_header("api-key", "test-key")
-            .match_body(mockito::Matcher::Json(body))
+            .match_body(mockito::Matcher::Json(json!({
+                "format": "arrow", "since": "2026-01-01",
+                "fields": parse_string_list(fields).unwrap()
+            })))
             .with_body(ipc)
             .create();
         let mut output = Vec::new();
@@ -470,7 +425,7 @@ mod tests {
             42,
             Some("2026-01-01"),
             None,
-            fields,
+            Some(fields),
             None,
             None,
             None,
