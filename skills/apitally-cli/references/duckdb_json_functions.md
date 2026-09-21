@@ -1,6 +1,6 @@
 # DuckDB JSON Functions
 
-Functions for querying request/response bodies and span `attributes`/`events` columns (DuckDB `JSON` type).
+Functions for querying `request_body_json`/`response_body_json` columns in `request_logs` and `attributes`/`events` columns in `spans` (DuckDB `JSON` type).
 
 ## Extraction Operators
 

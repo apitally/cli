@@ -158,19 +158,13 @@ CREATE TABLE spans (
 );
 ```
 
-Both `traces --db` and `request-details --db` populate this shared table. Trace IDs are 32-character lowercase hex; span IDs are 16-character lowercase hex. Each command replaces the **complete row** for a matching `(app_id, trace_id, span_id)`, setting omitted optional columns to `NULL`. Unreturned spans remain, including when the response is empty.
+Both `traces --db` and `request-details --db` populate this table.
 
-Request-details takes `trace_id` from its enclosing response. Its span objects omit `env`, `events`, `scope_name`, and `scope_version`, so it clears those columns on replacement. The enclosing request's environment is not used as a per-span environment. All optional columns are nullable to support field selection, even if their selected API values are never null.
+`attributes` is a JSON object with native JSON values. `events` is a JSON array of objects with `timestamp`, `name`, and `attributes`. Event timestamps are ISO 8601 UTC strings with nanosecond precision. See [attribute and event SQL examples](duckdb_json_functions.md#span-attributes-and-events).
 
-`start_time_ns` and `end_time_ns` are Unix epoch nanoseconds; `duration_ns` is a duration in nanoseconds. Use integer bounds for exact time comparisons and `duration_ns / 1000000.0` for milliseconds. Scope persistent queries by `app_id` and relevant trace IDs or start-time bounds.
+### Legacy schema
 
-`attributes` is a JSON object with native JSON values. `events` is a JSON array of objects with `timestamp`, `name`, and `attributes`. Event timestamps are ISO 8601 UTC strings with nanosecond precision. Selected empty collections are `{}` and `[]`; omitted fields are SQL `NULL`. See [attribute and event SQL examples](duckdb_json_functions.md#span-attributes-and-events).
-
-Refetch older local span rows with JSON-encoded attribute strings to use these queries.
-
-### Legacy span schema
-
-Databases whose `spans` table has `request_uuid` require an explicit reset and refetch. The CLI reports an input error without changing records. With user permission, run `reset-db --db <same-path>` to clear **all tables**, then refetch. Alternatively, fetch into a new database file to retain the old one for inspection. Data beyond API retention may not be available to refetch. See [reset-db](commands.md#reset-db).
+Databases whose `spans` table has `request_uuid` require an explicit reset and refetch. See [reset-db](commands.md#reset-db).
 
 ## Relationships
 
@@ -187,32 +181,3 @@ Databases whose `spans` table has `request_uuid` require an explicit reset and r
 - `spans.app_id` references `apps.app_id`
 - `spans.env` matches `app_envs.name`, scoped by `app_id`; populated only if the latest span fetch returned it
 - `spans.parent_span_id` matches another span's `span_id`, scoped by both `app_id` and `trace_id`
-
-Requests and traces are not one-to-one: multiple requests may share a trace, a trace has many spans, and spans may exist without request logs. A direct join can multiply request or span counts. For request counts, use `EXISTS` or deduplicate requests before counting.
-
-For example, count requests associated with a stored error span without multiplying by the number of spans:
-
-```sql
-SELECT count(*) AS request_count
-FROM request_logs r
-WHERE r.app_id = 1
-  AND r.trace_id = '0123456789abcdef0123456789abcdef'
-  AND EXISTS (
-      SELECT 1 FROM spans s
-      WHERE s.app_id = r.app_id AND s.trace_id = r.trace_id
-        AND s.status = 'ERROR'
-  );
-```
-
-Find parent spans within the same trace:
-
-```sql
-SELECT s.span_id, s.name, p.span_id AS parent_span_id, p.name AS parent_name
-FROM spans s
-LEFT JOIN spans p
-  ON p.app_id = s.app_id AND p.trace_id = s.trace_id
-  AND p.span_id = s.parent_span_id
-WHERE s.app_id = 1
-  AND s.trace_id = '0123456789abcdef0123456789abcdef'
-ORDER BY s.start_time_ns, s.span_id;
-```

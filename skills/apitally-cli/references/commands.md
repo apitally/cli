@@ -1,17 +1,5 @@
 # Command Reference
 
-- [auth](#auth)
-- [whoami](#whoami)
-- [apps](#apps)
-- [consumers](#consumers)
-- [endpoints](#endpoints)
-- [metrics](#metrics)
-- [request-logs](#request-logs)
-- [traces](#traces)
-- [request-details](#request-details)
-- [sql](#sql)
-- [reset-db](#reset-db)
-
 API commands accept an `--api-key <key>` flag for authentication (`sql` and `reset-db` use only the local database). API key resolution order: `--api-key` flag > `APITALLY_API_KEY` env var > `~/.apitally/auth.json`.
 
 Commands that accept a `--db` flag use `~/.apitally/data.duckdb` as the default database path if no other path is specified. If the database file doesn't exist, it will be created (except for the `sql` command). When writing to tables, existing records are updated (no duplicates are created).
@@ -424,11 +412,7 @@ Get full details for a specific request identified by its UUID, including header
 
 - `--db`: Write to `request_logs`, `application_logs`, and `spans` tables in DuckDB instead of outputting JSON to stdout
 
-Spans belong to the enclosing response's `trace_id`. Individual span objects do not repeat that ID. Span attributes contain native JSON values, as in `traces` output.
-
-Both `request-details --db` and `traces --db` populate the shared `spans` table, keyed by `(app_id, trace_id, span_id)`. Each command replaces complete matching rows and clears omitted columns. Request-details span objects omit `env`, `events`, `scope_name`, and `scope_version`, so refetching this way sets those columns to `NULL`, even if `traces` populated them earlier. The request's environment is not substituted for a span's environment. Unreturned spans remain, including on an empty response.
-
-Correlate spans to requests on both `app_id` and `trace_id`. Multiple requests can share a trace and each trace can have many spans, so joins can multiply counts. See [relationships](duckdb_tables.md#relationships). For old span schemas, follow [legacy database recovery](#reset-db).
+Correlate spans to requests on both `app_id` and `trace_id`. Multiple requests can share a trace and each trace can have many spans, so joins can multiply counts. See [relationships](duckdb_tables.md#relationships).
 
 To store full details for a request found in request logs (substitute its app ID and UUID):
 
@@ -436,8 +420,6 @@ To store full details for a request found in request logs (substitute its app ID
 npx @apitally/cli request-details 1 2fbc1df6-3124-4ed1-a376-7d2c64e4d5cf \
   --db ./trace-investigation.duckdb
 ```
-
-This also replaces returned span rows in that database, clearing the four omitted span fields described above. Refetch with `traces` and the desired fields if those values are needed again.
 
 Example JSON output (without `--db`):
 
@@ -460,7 +442,7 @@ Run a SQL query against a local DuckDB database. The query can be passed as an a
 
 Available tables: `apps`, `app_envs`, `consumers`, `endpoints`, `metrics`, `request_logs`, `application_logs`, `spans`. See [duckdb_tables.md](duckdb_tables.md) for schemas.
 
-**Important:** The database may contain data from previous sessions. Always filter queries by `app_id` and the current investigation scope: `timestamp` for request logs, `period_start`/`period_end` for metrics, and exact `trace_id` values or integer `start_time_ns` bounds for spans. Span durations are nanoseconds; divide by `1000000.0` for milliseconds.
+**Important:** The database may contain data from previous sessions. Always filter queries by `app_id` and the current investigation scope: `timestamp` for request logs, `period_start`/`period_end` for metrics, and exact `trace_id` values or integer `start_time_ns` bounds for spans.
 
 DuckDB uses a [PostgreSQL-compatible SQL dialect](https://duckdb.org/docs/stable/sql/dialect/overview). The bundled DuckDB has no ICU extension, so `TIMESTAMPTZ` columns cannot be cast directly to `DATE`. Use `(timestamp AT TIME ZONE 'UTC')::DATE` or `date_trunc('day', timestamp AT TIME ZONE 'UTC')` for date conversion and grouping.
 
@@ -477,15 +459,6 @@ Example output:
 npx @apitally/cli reset-db [--db <path>]
 ```
 
-Drop and recreate **all tables** in the local DuckDB database, not only spans. Status goes to stderr. Obtain user permission before running this destructive command.
+Drop and recreate all tables in the local DuckDB database. Use this to clear all stored data and start fresh.
 
 - `--db`: Path to DuckDB database
-
-### Legacy database recovery
-
-A legacy `spans` table with `request_uuid` is incompatible with trace-based identity. `traces --db` and `request-details --db` return an input error (exit 4) without changing existing records. Choose one of these options:
-
-1. Preserve the old file and fetch into a new file using `--db ./trace-investigation.duckdb` (choose an unused path).
-2. With user permission, run `npx @apitally/cli reset-db --db ./investigation.duckdb` against the **same path that reported the error**, then refetch data for all needed tables. For the default database, omit the path.
-
-There is no data-preserving migration. Data beyond API retention may no longer be available to refetch; inspect or preserve the old file before resetting.
