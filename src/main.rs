@@ -680,65 +680,6 @@ mod tests {
     }
 
     #[test]
-    fn test_traces_cli_parsing() {
-        for (db_args, expected_db) in [
-            (vec![], None),
-            (vec!["--db"], Some(None)),
-            (
-                vec!["--db", "traces.duckdb"],
-                Some(Some(PathBuf::from("traces.duckdb"))),
-            ),
-        ] {
-            let mut args = vec!["apitally", "traces", "42", "--since", "24h"];
-            args.extend(db_args);
-            let Command::Traces {
-                app_id, since, db, ..
-            } = Cli::try_parse_from(args).unwrap().command
-            else {
-                panic!("expected traces");
-            };
-            assert_eq!(app_id, 42);
-            assert_eq!(since.as_deref(), Some("24h"));
-            assert_eq!(db, expected_db);
-        }
-
-        let filters =
-            r#"[{"field":"trace_id","op":"eq","value":"0123456789abcdef0123456789abcdef"}]"#;
-        let Command::Traces {
-            since,
-            until,
-            fields,
-            filters: parsed_filters,
-            sample,
-            limit,
-            ..
-        } = Cli::try_parse_from([
-            "apitally",
-            "traces",
-            "42",
-            "--filters",
-            filters,
-            "--fields",
-            "attributes,events",
-            "--sample",
-            "0.1",
-            "--limit",
-            "100",
-        ])
-        .unwrap()
-        .command
-        else {
-            panic!("expected traces");
-        };
-        assert!(since.is_none());
-        assert!(until.is_none());
-        assert_eq!(fields.as_deref(), Some("attributes,events"));
-        assert_eq!(parsed_filters.as_deref(), Some(filters));
-        assert_eq!(sample.as_deref(), Some("0.1"));
-        assert_eq!(limit, Some(100));
-    }
-
-    #[test]
     fn test_cli_parsing() {
         // Missing required args should fail
         assert!(Cli::try_parse_from(["apitally"]).is_err()); // missing command
@@ -797,6 +738,27 @@ mod tests {
                 .unwrap()
                 .command,
             Command::RequestLogs { app_id: 42, .. }
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["apitally", "traces", "42", "--since", "24h"])
+                .unwrap()
+                .command,
+            Command::Traces {
+                app_id: 42,
+                since: Some(_),
+                ..
+            }
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["apitally", "traces", "42"])
+                .unwrap()
+                .command,
+            Command::Traces {
+                app_id: 42,
+                since: None,
+                until: None,
+                ..
+            }
         ));
         assert!(matches!(
             Cli::try_parse_from([

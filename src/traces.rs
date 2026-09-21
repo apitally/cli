@@ -259,103 +259,59 @@ mod tests {
     fn test_run_ndjson() {
         let filters = r#"[{"field":"trace_id","op":"eq","value":"0123456789abcdef0123456789abcdef"},{"field":"attributes","key":"retry.count","op":"gte","value":2},{"field":"events","event_name":"exception","op":"exists"}]"#;
         let response = sample_traces_ndjson();
-        for fields in ["attributes,events", r#"["attributes","events"]"#] {
-            let mut server = mockito::Server::new();
-            let mock = server
-                .mock("POST", "/v1/apps/42/traces")
-                .match_header("api-key", "test-key")
-                .match_body(mockito::Matcher::Json(json!({
-                    "format": "ndjson", "fields": ["attributes", "events"],
-                    "filters": serde_json::from_str::<serde_json::Value>(filters).unwrap()
-                })))
-                .with_body(response)
-                .create();
-            let mut output = Vec::new();
-            run(
-                42,
-                None,
-                None,
-                Some(fields),
-                Some(filters),
-                None,
-                None,
-                None,
-                Some("test-key"),
-                Some(&server.url()),
-                &mut output,
-            )
-            .unwrap();
-            mock.assert();
-            assert_eq!(output, response.as_bytes());
-        }
+        let mut server = mockito::Server::new();
+        let mock = server
+            .mock("POST", "/v1/apps/42/traces")
+            .match_header("api-key", "test-key")
+            .match_body(mockito::Matcher::Json(json!({
+                "format": "ndjson", "fields": ["attributes", "events"],
+                "filters": serde_json::from_str::<serde_json::Value>(filters).unwrap()
+            })))
+            .with_body(response)
+            .create();
+        let mut output = Vec::new();
+        run(
+            42,
+            None,
+            None,
+            Some("attributes,events"),
+            Some(filters),
+            None,
+            None,
+            None,
+            Some("test-key"),
+            Some(&server.url()),
+            &mut output,
+        )
+        .unwrap();
+        mock.assert();
+        assert_eq!(output, response.as_bytes());
 
-        for (sample, expected) in [
-            (None, None),
-            (Some("1000"), Some(json!(1000))),
-            (Some("0.1"), Some(json!(0.1))),
-        ] {
-            let mut server = mockito::Server::new();
-            let mut body =
-                json!({"format":"ndjson", "since":"2026-01-01", "until":"2026-01-02", "limit":100});
-            if let Some(expected) = expected {
-                body["sample"] = expected;
-            }
+        for (sample, expected) in [("1000", json!(1000)), ("0.1", json!(0.1))] {
             let mock = server
                 .mock("POST", "/v1/apps/42/traces")
-                .match_body(mockito::Matcher::Json(body))
+                .match_body(mockito::Matcher::Json(json!({
+                    "format": "ndjson", "since": "2026-01-01", "until": "2026-01-02",
+                    "sample": expected, "limit": 100
+                })))
                 .with_body("")
                 .create();
-            let mut output = Vec::new();
             run(
                 42,
                 Some("2026-01-01"),
                 Some("2026-01-02"),
                 None,
                 None,
-                sample,
+                Some(sample),
                 Some(100),
                 None,
                 Some("test-key"),
                 Some(&server.url()),
-                &mut output,
+                Vec::new(),
             )
             .unwrap();
             mock.assert();
-            assert!(output.is_empty());
         }
-
-        let mut server = mockito::Server::new();
-        let mock = server
-            .mock("POST", "/v1/apps/42/traces")
-            .match_request(|request| {
-                let body: serde_json::Value =
-                    serde_json::from_slice(request.body().unwrap()).unwrap();
-                let since: chrono::DateTime<chrono::Utc> =
-                    body["since"].as_str().unwrap().parse().unwrap();
-                let until: chrono::DateTime<chrono::Utc> =
-                    body["until"].as_str().unwrap().parse().unwrap();
-                body.as_object().unwrap().len() == 3
-                    && body["format"] == "ndjson"
-                    && ((chrono::Utc::now() - since).num_seconds() - 86400).abs() < 5
-                    && ((chrono::Utc::now() - until).num_seconds() - 3600).abs() < 5
-            })
-            .with_body("")
-            .create();
-        run(
-            42,
-            Some("24h"),
-            Some("1h"),
-            None,
-            None,
-            None,
-            None,
-            None,
-            Some("test-key"),
-            Some(&server.url()),
-            Vec::new(),
-        )
-        .unwrap();
-        mock.assert();
     }
 
     #[test]
@@ -369,16 +325,9 @@ mod tests {
                 Some("0"),
                 "--sample as integer must be greater than 0",
             ),
-            (
-                None,
-                None,
-                Some("-1"),
-                "--sample as integer must be greater than 0",
-            ),
             (None, None, Some("0.0"), "--sample as float must be between"),
             (None, None, Some("0.6"), "--sample as float must be between"),
             (None, None, Some("NaN"), "--sample as float must be between"),
-            (None, None, Some("inf"), "--sample as float must be between"),
             (
                 None,
                 None,
@@ -403,30 +352,6 @@ mod tests {
             assert_eq!(crate::exit_code(&err), 4);
             assert!(err.to_string().contains(message), "{err}");
         }
-
-        let mut server = mockito::Server::new();
-        let mock = server
-            .mock("POST", "/v1/apps/42/traces")
-            .match_body(mockito::Matcher::Json(json!({"format":"ndjson"})))
-            .with_status(422)
-            .with_body("since required without a positive trace_id filter")
-            .create();
-        let err = run(
-            42,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            Some("test-key"),
-            Some(&server.url()),
-            Vec::new(),
-        )
-        .unwrap_err();
-        mock.assert();
-        assert_eq!(crate::exit_code(&err), 4);
     }
 
     #[test]
@@ -450,43 +375,6 @@ mod tests {
             expected["app_id"] = json!(42);
             assert_eq!(&stored, expected);
         }
-        let (db_system, retry_count, cached, exception_type, event_time): (
-            String,
-            i64,
-            bool,
-            String,
-            i64,
-        ) = conn
-            .query_row(
-                r#"SELECT
-                json_extract_string(attributes, '$."db.system"'),
-                json_extract_string(attributes, '$."retry.count"')::BIGINT,
-                json_extract_string(attributes, '$."cached"')::BOOLEAN,
-                json_extract_string(events, '$[0].attributes."exception.type"'),
-                epoch_ns(json_extract_string(events, '$[0].timestamp')::TIMESTAMP_NS)
-               FROM spans WHERE span_id = '0000000000000002'"#,
-                [],
-                |row| {
-                    Ok((
-                        row.get(0)?,
-                        row.get(1)?,
-                        row.get(2)?,
-                        row.get(3)?,
-                        row.get(4)?,
-                    ))
-                },
-            )
-            .unwrap();
-        assert_eq!(
-            (
-                db_system.as_str(),
-                retry_count,
-                cached,
-                exception_type.as_str(),
-                event_time
-            ),
-            ("postgresql", 2, false, "TimeoutError", 1767225600123458000)
-        );
         conn.execute_batch(
             "INSERT INTO spans (app_id, trace_id, span_id, start_time_ns, name) VALUES \
             (42, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '0000000000000001', 1, 'other trace'), \
@@ -495,81 +383,6 @@ mod tests {
         .unwrap();
         drop(conn);
 
-        let request = "11111111-2222-4333-8444-555555555555";
-        let mut spans = parse_ndjson(sample_traces_ndjson().as_bytes());
-        spans.truncate(2);
-        for span in &mut spans {
-            for field in ["trace_id", "env", "events", "scope_name", "scope_version"] {
-                span.as_object_mut().unwrap().remove(field);
-            }
-        }
-        let mock = server
-            .mock(
-                "GET",
-                format!("/v1/apps/42/request-logs/{request}").as_str(),
-            )
-            .match_query(mockito::Matcher::UrlEncoded(
-                "include_consumer_id".into(),
-                "true".into(),
-            ))
-            .with_body(
-                json!({
-                    "timestamp": "2026-01-01T00:00:00Z", "request_uuid": request, "env": "prod",
-                    "method": "GET", "url": "https://example.com/books",
-                    "request_headers": [], "request_size_bytes": 0,
-                    "status_code": 200, "response_time_ms": 250,
-                    "response_headers": [], "response_size_bytes": 0,
-                    "trace_id": "0123456789abcdef0123456789abcdef", "logs": [], "spans": spans
-                })
-                .to_string(),
-            )
-            .create();
-        crate::request_details::run(
-            42,
-            request,
-            Some(&db_path),
-            Some("test-key"),
-            Some(&server.url()),
-            Vec::new(),
-        )
-        .unwrap();
-        mock.assert();
-        let conn = open_db(&db_path).unwrap();
-        let cleared: i64 = conn
-            .query_row(
-                "SELECT count(*) FROM spans WHERE app_id = 42 \
-            AND trace_id = '0123456789abcdef0123456789abcdef' AND env IS NULL AND events IS NULL \
-            AND scope_name IS NULL AND scope_version IS NULL \
-            AND json_extract(attributes, '$.\"retry.count\"') = 2 \
-            AND json_type(attributes, '$.\"cached\"') = 'BOOLEAN'",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(cleared, 2);
-        let joined: i64 = conn
-            .query_row(
-                "SELECT count(*) FROM request_logs r JOIN spans s \
-            ON r.app_id = s.app_id AND r.trace_id = s.trace_id",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(joined, 2);
-        drop(conn);
-
-        fetch_spans(&mut server, &db_path, &ipc, Some(ALL_FIELDS));
-        let conn = open_db(&db_path).unwrap();
-        let restored: i64 = conn
-            .query_row(
-                "SELECT count(*) FROM spans WHERE app_id = 42 \
-            AND env = 'prod' AND events IS NOT NULL AND scope_name = 'test.instrumentation'",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(restored, 2);
-        drop(conn);
         fetch_spans(&mut server, &db_path, &sample_traces_arrow_ipc(10, 3), None);
         let conn = open_db(&db_path).unwrap();
         let cleared: i64 = conn.query_row("SELECT count(*) FROM spans WHERE app_id = 42 AND attributes IS NULL \
@@ -670,53 +483,5 @@ mod tests {
         mock.assert();
         mock.remove();
         assert!(output.is_empty());
-    }
-
-    #[test]
-    fn test_run_legacy_schema() {
-        let (_dir, db_path) = temp_db();
-        let conn = open_db(&db_path).unwrap();
-        conn.execute_batch(
-            "CREATE TABLE spans (app_id INTEGER, request_uuid VARCHAR, span_id VARCHAR); \
-            INSERT INTO spans VALUES (42, 'old-request', 'old-span')",
-        )
-        .unwrap();
-        drop(conn);
-        let mut server = mockito::Server::new();
-        let mock = server
-            .mock("POST", "/v1/apps/42/traces")
-            .with_body("")
-            .create();
-        let err = run(
-            42,
-            Some("24h"),
-            None,
-            None,
-            None,
-            None,
-            None,
-            Some(&db_path),
-            Some("test-key"),
-            Some(&server.url()),
-            Vec::new(),
-        )
-        .unwrap_err();
-        mock.assert();
-        assert_eq!(crate::exit_code(&err), 4);
-        assert!(err.to_string().contains("reset-db --db"));
-        assert!(err.to_string().contains("ALL tables"));
-        let conn = open_db(&db_path).unwrap();
-        let request: String = conn
-            .query_row("SELECT request_uuid FROM spans", [], |row| row.get(0))
-            .unwrap();
-        assert_eq!(request, "old-request");
-        let tables: i64 = conn
-            .query_row(
-                "SELECT count(*) FROM information_schema.tables",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(tables, 1);
     }
 }

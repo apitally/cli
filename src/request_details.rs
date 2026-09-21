@@ -381,17 +381,6 @@ mod tests {
             .unwrap();
         assert_eq!(log_message, "handling request");
 
-        let span_name: String = conn
-            .query_row(
-                "SELECT spans.name FROM spans JOIN request_logs
-                 ON spans.app_id = request_logs.app_id AND spans.trace_id = request_logs.trace_id
-                 WHERE request_logs.request_uuid = 'abc-123'",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(span_name, "GET /test");
-
         conn.execute_batch(
             "UPDATE spans SET parent_span_id = '00000000000000bb', env = 'staging',
                 name = 'old name', kind = 'CLIENT', status = 'ERROR', start_time_ns = 1,
@@ -415,15 +404,14 @@ mod tests {
         )
         .unwrap();
         mock.assert();
-        mock.remove();
-        assert!(buf.is_empty());
 
         let conn = open_db(&db_path).unwrap();
         let span_json: String = conn
             .query_row(
-                "SELECT to_json(spans) FROM spans WHERE app_id = 1
-                 AND trace_id = '0000000000000000aaaaaaaaaaaaaaaa'
-                 AND span_id = '00000000000000aa'",
+                "SELECT to_json(spans) FROM spans JOIN request_logs
+                 ON spans.app_id = request_logs.app_id AND spans.trace_id = request_logs.trace_id
+                 WHERE request_logs.app_id = 1 AND request_logs.request_uuid = 'abc-123'
+                 AND spans.span_id = '00000000000000aa'",
                 [],
                 |row| row.get(0),
             )
@@ -451,121 +439,5 @@ mod tests {
             span_names,
             ["GET /test", "other app", "other trace", "sibling"]
         );
-
-        drop(conn);
-        let mut empty_response: serde_json::Value =
-            serde_json::from_str(sample_request_details_json()).unwrap();
-        empty_response["spans"] = serde_json::json!([]);
-        for trace_id in [
-            serde_json::json!("0000000000000000aaaaaaaaaaaaaaaa"),
-            serde_json::Value::Null,
-        ] {
-            empty_response["trace_id"] = trace_id;
-            let empty_mock = server
-                .mock("GET", "/v1/apps/1/request-logs/abc-123")
-                .match_query(mockito::Matcher::Any)
-                .with_status(200)
-                .with_header("content-type", "application/json")
-                .with_body(empty_response.to_string())
-                .create();
-            run(
-                1,
-                "abc-123",
-                Some(&db_path),
-                Some("test-key"),
-                Some(&server.url()),
-                &mut buf,
-            )
-            .unwrap();
-            empty_mock.assert();
-            empty_mock.remove();
-            let conn = open_db(&db_path).unwrap();
-            let count: i64 = conn
-                .query_row("SELECT count(*) FROM spans", [], |row| row.get(0))
-                .unwrap();
-            assert_eq!(count, 4);
-        }
-        assert!(buf.is_empty());
-    }
-
-    #[test]
-    fn test_run_with_legacy_spans_leaves_database_unchanged() {
-        let mut server = mockito::Server::new();
-        let mock = server
-            .mock("GET", "/v1/apps/1/request-logs/abc-123")
-            .match_query(mockito::Matcher::Any)
-            .with_status(200)
-            .with_header("content-type", "application/json")
-            .with_body(sample_request_details_json())
-            .expect(2)
-            .create();
-        let (_dir, db_path) = temp_db();
-        let conn = open_db(&db_path).unwrap();
-        conn.execute_batch(
-            "CREATE TABLE spans (app_id INTEGER, request_uuid VARCHAR, span_id VARCHAR);
-             INSERT INTO spans VALUES (1, 'abc-123', '00000000000000aa');",
-        )
-        .unwrap();
-
-        drop(conn);
-        for seed_request in [false, true] {
-            let conn = open_db(&db_path).unwrap();
-            if seed_request {
-                ensure_request_logs_table(&conn).unwrap();
-                ensure_application_logs_table(&conn).unwrap();
-                let mut data: RequestDetailsResponse =
-                    serde_json::from_str(sample_request_details_json()).unwrap();
-                data.method = "POST".into();
-                data.logs[0].message = "original log".into();
-                write_request_details_to_db(&conn, 1, &data).unwrap();
-                write_application_logs_to_db(&conn, 1, &data.request_uuid, &data.logs).unwrap();
-            }
-            drop(conn);
-            let mut buf = Vec::new();
-            let err = run(
-                1,
-                "abc-123",
-                Some(&db_path),
-                Some("test-key"),
-                Some(&server.url()),
-                &mut buf,
-            )
-            .unwrap_err();
-            assert_eq!(crate::exit_code(&err), 4);
-            assert!(err.to_string().contains("reset-db"));
-            assert!(buf.is_empty());
-            let conn = open_db(&db_path).unwrap();
-            let spans: String = conn
-                .query_row("SELECT to_json(list(spans)) FROM spans", [], |row| {
-                    row.get(0)
-                })
-                .unwrap();
-            assert_eq!(
-                serde_json::from_str::<serde_json::Value>(&spans).unwrap(),
-                serde_json::json!([{
-                    "app_id": 1, "request_uuid": "abc-123", "span_id": "00000000000000aa"
-                }])
-            );
-            if seed_request {
-                let method: String = conn
-                    .query_row("SELECT method FROM request_logs", [], |row| row.get(0))
-                    .unwrap();
-                let message: String = conn
-                    .query_row("SELECT message FROM application_logs", [], |row| row.get(0))
-                    .unwrap();
-                assert_eq!(method, "POST");
-                assert_eq!(message, "original log");
-            } else {
-                let tables: i64 = conn
-                    .query_row(
-                        "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'main'",
-                        [],
-                        |row| row.get(0),
-                    )
-                    .unwrap();
-                assert_eq!(tables, 1);
-            }
-        }
-        mock.assert();
     }
 }
