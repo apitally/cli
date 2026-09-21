@@ -154,21 +154,111 @@ pub(crate) fn ensure_spans_table(conn: &duckdb::Connection) -> Result<()> {
 mod tests {
     use std::sync::Arc;
 
-    use super::*;
-    use crate::utils::test_utils::{parse_ndjson, temp_db};
-    use duckdb::arrow::array::StringArray;
+    use duckdb::arrow::array::{Int64Array, StringArray};
     use duckdb::arrow::compute::concat_batches;
+    use duckdb::arrow::datatypes::{DataType, Field, Schema};
     use duckdb::arrow::ipc::writer::StreamWriter;
     use duckdb::arrow::record_batch::RecordBatch;
     use serde_json::json;
 
+    use super::*;
+    use crate::utils::test_utils::{parse_ndjson, temp_db};
+
     const ALL_FIELDS: &str = "trace_id,span_id,parent_span_id,env,name,kind,status,start_time_ns,end_time_ns,duration_ns,attributes,events,scope_name,scope_version";
-    const ALL_SPANS: &[u8] = include_bytes!("../tests/fixtures/traces-all.arrow");
+
+    fn sample_traces_ndjson() -> &'static str {
+        r#"{"trace_id":"0123456789abcdef0123456789abcdef","span_id":"0000000000000001","start_time_ns":1767225600123456001,"parent_span_id":null,"env":"prod","name":"GET /books","kind":"SERVER","status":"UNSET","end_time_ns":1767225600373456001,"duration_ns":250000000,"attributes":{"http.route":"/books","retry.count":2,"cached":true,"details":{"key":null},"labels":["a",1]},"events":[{"timestamp":"2026-01-01T00:00:00.123456001Z","name":"exception","attributes":{"exception.type":"TimeoutError","code":503}}],"scope_name":"test.instrumentation","scope_version":"1.2.3"}
+{"trace_id":"0123456789abcdef0123456789abcdef","span_id":"0000000000000002","start_time_ns":1767225600123457001,"parent_span_id":"0000000000000001","env":"prod","name":"db.query","kind":"CLIENT","status":"ERROR","end_time_ns":1767225600323457001,"duration_ns":200000000,"attributes":{"db.system":"postgresql","retry.count":2,"cached":false},"events":[{"timestamp":"2026-01-01T00:00:00.123458000Z","name":"exception","attributes":{"exception.type":"TimeoutError"}}],"scope_name":"test.instrumentation","scope_version":"1.2.3"}
+{"trace_id":"fedcba9876543210fedcba9876543210","span_id":"0000000000000003","start_time_ns":1767225600123458001,"parent_span_id":null,"env":null,"name":"background","kind":"INTERNAL","status":"OK","end_time_ns":1767225600123459002,"duration_ns":1001,"attributes":{},"events":[],"scope_name":null,"scope_version":null}
+"#
+    }
+
+    fn sample_traces_arrow_ipc(field_count: usize, row_count: usize) -> Vec<u8> {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("trace_id", DataType::Utf8, false),
+            Field::new("span_id", DataType::Utf8, false),
+            Field::new("start_time_ns", DataType::Int64, false),
+            Field::new("parent_span_id", DataType::Utf8, true),
+            Field::new("env", DataType::Utf8, true),
+            Field::new("name", DataType::Utf8, false),
+            Field::new("kind", DataType::Utf8, false),
+            Field::new("status", DataType::Utf8, false),
+            Field::new("end_time_ns", DataType::Int64, false),
+            Field::new("duration_ns", DataType::Int64, false),
+            Field::new("attributes", DataType::Utf8, false),
+            Field::new("events", DataType::Utf8, false),
+            Field::new("scope_name", DataType::Utf8, true),
+            Field::new("scope_version", DataType::Utf8, true),
+        ]));
+        let rows = parse_ndjson(sample_traces_ndjson().as_bytes());
+        let batch = RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(StringArray::from(vec![
+                    "0123456789abcdef0123456789abcdef",
+                    "0123456789abcdef0123456789abcdef",
+                    "fedcba9876543210fedcba9876543210",
+                ])),
+                Arc::new(StringArray::from(vec![
+                    "0000000000000001",
+                    "0000000000000002",
+                    "0000000000000003",
+                ])),
+                Arc::new(Int64Array::from(vec![
+                    1767225600123456001,
+                    1767225600123457001,
+                    1767225600123458001,
+                ])),
+                Arc::new(StringArray::from(vec![
+                    None,
+                    Some("0000000000000001"),
+                    None,
+                ])),
+                Arc::new(StringArray::from(vec![Some("prod"), Some("prod"), None])),
+                Arc::new(StringArray::from(vec![
+                    "GET /books",
+                    "db.query",
+                    "background",
+                ])),
+                Arc::new(StringArray::from(vec!["SERVER", "CLIENT", "INTERNAL"])),
+                Arc::new(StringArray::from(vec!["UNSET", "ERROR", "OK"])),
+                Arc::new(Int64Array::from(vec![
+                    1767225600373456001,
+                    1767225600323457001,
+                    1767225600123459002,
+                ])),
+                Arc::new(Int64Array::from(vec![250000000, 200000000, 1001])),
+                Arc::new(StringArray::from_iter_values(
+                    rows.iter().map(|row| row["attributes"].to_string()),
+                )),
+                Arc::new(StringArray::from_iter_values(
+                    rows.iter().map(|row| row["events"].to_string()),
+                )),
+                Arc::new(StringArray::from(vec![
+                    Some("test.instrumentation"),
+                    Some("test.instrumentation"),
+                    None,
+                ])),
+                Arc::new(StringArray::from(vec![Some("1.2.3"), Some("1.2.3"), None])),
+            ],
+        )
+        .unwrap()
+        .project(&(0..field_count).collect::<Vec<_>>())
+        .unwrap()
+        .slice(0, row_count);
+        let mut ipc = Vec::new();
+        let mut writer = StreamWriter::try_new(&mut ipc, &batch.schema()).unwrap();
+        if row_count > 0 {
+            writer.write(&batch).unwrap();
+        }
+        writer.finish().unwrap();
+        ipc
+    }
 
     #[test]
     fn test_run_ndjson() {
         let filters = r#"[{"field":"trace_id","op":"eq","value":"0123456789abcdef0123456789abcdef"},{"field":"attributes","key":"retry.count","op":"gte","value":2},{"field":"events","event_name":"exception","op":"exists"}]"#;
-        let response = include_bytes!("../tests/fixtures/traces-all.ndjson");
+        let response = sample_traces_ndjson();
         for fields in ["attributes,events", r#"["attributes","events"]"#] {
             let mut server = mockito::Server::new();
             let mock = server
@@ -196,7 +286,7 @@ mod tests {
             )
             .unwrap();
             mock.assert();
-            assert_eq!(output, response);
+            assert_eq!(output, response.as_bytes());
         }
 
         for (sample, expected) in [
@@ -343,9 +433,10 @@ mod tests {
     fn test_run_with_db() {
         let mut server = mockito::Server::new();
         let (_dir, db_path) = temp_db();
-        fetch_spans(&mut server, &db_path, ALL_SPANS, Some(ALL_FIELDS));
+        let ipc = sample_traces_arrow_ipc(14, 3);
+        fetch_spans(&mut server, &db_path, &ipc, Some(ALL_FIELDS));
         let conn = open_db(&db_path).unwrap();
-        let mut expected = parse_ndjson(include_bytes!("../tests/fixtures/traces-all.ndjson"));
+        let mut expected = parse_ndjson(sample_traces_ndjson().as_bytes());
         let stored: Vec<String> = conn
             .prepare("SELECT to_json(spans) FROM spans ORDER BY start_time_ns")
             .unwrap()
@@ -405,6 +496,13 @@ mod tests {
         drop(conn);
 
         let request = "11111111-2222-4333-8444-555555555555";
+        let mut spans = parse_ndjson(sample_traces_ndjson().as_bytes());
+        spans.truncate(2);
+        for span in &mut spans {
+            for field in ["trace_id", "env", "events", "scope_name", "scope_version"] {
+                span.as_object_mut().unwrap().remove(field);
+            }
+        }
         let mock = server
             .mock(
                 "GET",
@@ -414,9 +512,17 @@ mod tests {
                 "include_consumer_id".into(),
                 "true".into(),
             ))
-            .with_body(include_bytes!(
-                "../tests/fixtures/request-details-traces.json"
-            ))
+            .with_body(
+                json!({
+                    "timestamp": "2026-01-01T00:00:00Z", "request_uuid": request, "env": "prod",
+                    "method": "GET", "url": "https://example.com/books",
+                    "request_headers": [], "request_size_bytes": 0,
+                    "status_code": 200, "response_time_ms": 250,
+                    "response_headers": [], "response_size_bytes": 0,
+                    "trace_id": "0123456789abcdef0123456789abcdef", "logs": [], "spans": spans
+                })
+                .to_string(),
+            )
             .create();
         crate::request_details::run(
             42,
@@ -452,7 +558,7 @@ mod tests {
         assert_eq!(joined, 2);
         drop(conn);
 
-        fetch_spans(&mut server, &db_path, ALL_SPANS, Some(ALL_FIELDS));
+        fetch_spans(&mut server, &db_path, &ipc, Some(ALL_FIELDS));
         let conn = open_db(&db_path).unwrap();
         let restored: i64 = conn
             .query_row(
@@ -464,12 +570,7 @@ mod tests {
             .unwrap();
         assert_eq!(restored, 2);
         drop(conn);
-        fetch_spans(
-            &mut server,
-            &db_path,
-            include_bytes!("../tests/fixtures/traces-default.arrow"),
-            None,
-        );
+        fetch_spans(&mut server, &db_path, &sample_traces_arrow_ipc(10, 3), None);
         let conn = open_db(&db_path).unwrap();
         let cleared: i64 = conn.query_row("SELECT count(*) FROM spans WHERE app_id = 42 AND attributes IS NULL \
             AND events IS NULL AND scope_name IS NULL AND scope_version IS NULL AND name IN ('GET /books', 'db.query', 'background')",
@@ -479,7 +580,7 @@ mod tests {
         fetch_spans(
             &mut server,
             &db_path,
-            include_bytes!("../tests/fixtures/traces-required.arrow"),
+            &sample_traces_arrow_ipc(3, 3),
             Some("[]"),
         );
         let conn = open_db(&db_path).unwrap();
@@ -492,7 +593,7 @@ mod tests {
         fetch_spans(
             &mut server,
             &db_path,
-            include_bytes!("../tests/fixtures/traces-empty.arrow"),
+            &sample_traces_arrow_ipc(14, 0),
             Some(ALL_FIELDS),
         );
         let conn = open_db(&db_path).unwrap();
@@ -504,7 +605,7 @@ mod tests {
         fetch_spans(
             &mut server,
             &empty_db,
-            include_bytes!("../tests/fixtures/traces-empty.arrow"),
+            &sample_traces_arrow_ipc(14, 0),
             Some(ALL_FIELDS),
         );
         let count: i64 = open_db(&empty_db)
@@ -516,7 +617,8 @@ mod tests {
 
     #[test]
     fn test_run_with_db_large_batch() {
-        let mut reader = StreamReader::try_new(ALL_SPANS, None).unwrap();
+        let ipc = sample_traces_arrow_ipc(14, 3);
+        let mut reader = StreamReader::try_new(ipc.as_slice(), None).unwrap();
         let schema = reader.schema();
         let first = reader.next().unwrap().unwrap().slice(0, 1);
         let batch = concat_batches(&schema, std::iter::repeat_n(&first, 2049)).unwrap();
