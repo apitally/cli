@@ -91,7 +91,7 @@ List results and SQL queries output NDJSON to stdout. `request-details` and `who
 
 `traces --db` and `request-details --db` share the `spans` table, keyed by app, trace, and span IDs. Refetching replaces complete matching rows, clearing omitted fields. Existing databases with the old request-based span schema require an explicit reset and refetch: `reset-db` clears **all tables**. Use a new database file instead to preserve the old data; data beyond API retention may not be available to refetch.
 
-Run `npx @apitally/cli --help` for detailed usage information.
+For detailed usage, run `npx @apitally/cli <command> --help`.
 
 For a full command reference, see [skills/apitally-cli/references/commands.md](skills/apitally-cli/references/commands.md).
 
