@@ -84,7 +84,6 @@ pub fn run(
              SELECT {app_id}, {col_list} FROM arrow(?, ?)"
         );
 
-        const CHUNK_SIZE: usize = 2048; // DuckDB's vector size
         let mut total = 0usize;
         eprint!(
             "0 spans written to table 'spans' in {}...",
@@ -94,11 +93,8 @@ pub fn run(
         for batch in reader {
             let batch = batch?;
             total += batch.num_rows();
-            for offset in (0..batch.num_rows()).step_by(CHUNK_SIZE) {
-                let chunk = batch.slice(offset, (batch.num_rows() - offset).min(CHUNK_SIZE));
-                let params = arrow_recordbatch_to_query_params(chunk);
-                conn.execute(&insert_sql, params)?;
-            }
+            let params = arrow_recordbatch_to_query_params(batch);
+            conn.execute(&insert_sql, params)?;
             eprint!(
                 "\r{total} spans written to table 'spans' in {}...",
                 db_path.display()
@@ -519,7 +515,7 @@ mod tests {
     }
 
     #[test]
-    fn test_run_with_db_chunks() {
+    fn test_run_with_db_large_batch() {
         let mut reader = StreamReader::try_new(ALL_SPANS, None).unwrap();
         let schema = reader.schema();
         let first = reader.next().unwrap().unwrap().slice(0, 1);
