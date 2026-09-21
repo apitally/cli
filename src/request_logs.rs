@@ -180,8 +180,8 @@ mod tests {
     use crate::utils::test_utils::{parse_ndjson, temp_db};
 
     fn sample_request_logs_ndjson() -> &'static str {
-        "{\"timestamp\":\"2025-01-01T00:00:00Z\",\"request_uuid\":\"abc\",\"method\":\"GET\",\"url\":\"https://api.example.com/test\",\"status_code\":200}\n\
-         {\"timestamp\":\"2025-01-01T00:01:00Z\",\"request_uuid\":\"def\",\"method\":\"POST\",\"url\":\"https://api.example.com/test2\",\"status_code\":201}\n"
+        "{\"timestamp\":\"2025-01-01T00:00:00Z\",\"request_uuid\":\"abc\",\"method\":\"GET\",\"url\":\"https://api.example.com/test\",\"status_code\":200,\"trace_id\":\"0123456789abcdef0123456789abcdef\"}\n\
+         {\"timestamp\":\"2025-01-01T00:01:00Z\",\"request_uuid\":\"def\",\"method\":\"POST\",\"url\":\"https://api.example.com/test2\",\"status_code\":201,\"trace_id\":null}\n"
     }
 
     fn sample_request_logs_arrow_ipc() -> Vec<u8> {
@@ -201,6 +201,7 @@ mod tests {
             Field::new("request_uuid", DataType::Utf8, false),
             Field::new("method", DataType::Utf8, false),
             Field::new("url", DataType::Utf8, false),
+            Field::new("trace_id", DataType::Utf8, true),
             Field::new("request_headers", headers_list_type.clone(), true),
         ]));
         let headers_struct = StructArray::from(vec![
@@ -229,6 +230,7 @@ mod tests {
                 Arc::new(StringArray::from(vec!["abc-123"])),
                 Arc::new(StringArray::from(vec!["GET"])),
                 Arc::new(StringArray::from(vec!["https://api.example.com/test"])),
+                Arc::new(StringArray::from(vec!["0123456789abcdef0123456789abcdef"])),
                 Arc::new(headers_list),
             ],
         )
@@ -281,6 +283,8 @@ mod tests {
         assert_eq!(rows[0]["status_code"], 200);
         assert_eq!(rows[1]["method"], "POST");
         assert_eq!(rows[1]["url"], "https://api.example.com/test2");
+        assert_eq!(rows[0]["trace_id"], "0123456789abcdef0123456789abcdef");
+        assert!(rows[1]["trace_id"].is_null());
     }
 
     #[test]
@@ -343,14 +347,15 @@ mod tests {
             .unwrap();
         assert_eq!(count, 1);
 
-        let (url, header_name): (String, Option<String>) = conn
+        let (url, header_name, trace_id): (String, Option<String>, String) = conn
             .query_row(
-                "SELECT url, request_headers[1].name FROM request_logs WHERE app_id = 1",
+                "SELECT url, request_headers[1].name, trace_id FROM request_logs WHERE app_id = 1",
                 [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .unwrap();
         assert_eq!(url, "https://api.example.com/test");
         assert_eq!(header_name.as_deref(), Some("content-type"));
+        assert_eq!(trace_id, "0123456789abcdef0123456789abcdef");
     }
 }

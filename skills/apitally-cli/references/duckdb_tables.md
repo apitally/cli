@@ -181,7 +181,7 @@ Databases whose `spans` table has `request_uuid` require an explicit reset and r
 - `request_logs.env` matches `app_envs.name` (string, not a foreign key to `app_env_id`)
 - `metrics.env` matches `app_envs.name` (string, only when metrics are grouped by env)
 - `application_logs.request_uuid` references `request_logs.request_uuid` (join on both `app_id` and `request_uuid`)
-- `spans.trace_id` matches `request_logs.trace_id` (join on both `app_id` and `trace_id`); explicitly select `trace_id` when fetching request logs because it is not a default field
+- `spans.trace_id` matches `request_logs.trace_id` (join on both `app_id` and `trace_id`)
 - `spans.app_id` references `apps.app_id`
 - `spans.env` matches `app_envs.name`, scoped by `app_id`; populated only if the latest span fetch returned it
 - `spans.parent_span_id` matches another span's `span_id`, scoped by both `app_id` and `trace_id`

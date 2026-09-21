@@ -206,11 +206,11 @@ Timestamps without timezone are treated as UTC. Results are ordered by timestamp
 | `exception_message`       | string                           | no      |
 | `exception_stacktrace`    | string                           | no      |
 | `sentry_event_id`         | string (ID)                      | no      |
-| `trace_id`                | string (ID)                      | no      |
+| `trace_id`                | string (ID), or null              | yes     |
 
-Default fields are included when `--fields` is omitted. When `--fields` is provided, it replaces the default set and only the specified fields are returned. `timestamp`, `request_uuid`, `method`, and `url` are always included regardless.
+Default fields are included when `--fields` is omitted. Providing `--fields` replaces the defaults, but `timestamp`, `request_uuid`, `method`, `url`, and `trace_id` are always included, even with `--fields '[]'`. With `--db`, refetching replaces complete matching rows and sets omitted columns to `NULL`; select every field still needed.
 
-Explicitly include `trace_id` to correlate requests with spans; it is not a default field. Use those IDs with [traces](#traces) to retrieve available spans without discovery-only filters, sampling, or unnecessary time bounds.
+Use non-null `trace_id` values with [traces](#traces) to retrieve available spans without discovery-only filters, sampling, or unnecessary time bounds.
 
 ### Filters
 
@@ -431,7 +431,7 @@ Spans belong to the enclosing response's `trace_id`. Individual span objects do 
 
 Both `request-details --db` and `traces --db` populate the shared `spans` table, keyed by `(app_id, trace_id, span_id)`. Each command replaces complete matching rows and clears omitted columns. Request-details span objects omit `env`, `events`, `scope_name`, and `scope_version`, so refetching this way sets those columns to `NULL`, even if `traces` populated them earlier. The request's environment is not substituted for a span's environment. Unreturned spans remain, including on an empty response.
 
-Correlate spans to requests on both `app_id` and `trace_id`. When using `request-logs` to fetch requests for this join, explicitly select `trace_id`; it is not a default field. Multiple requests can share a trace and each trace can have many spans, so joins can multiply counts. See [relationships](duckdb_tables.md#relationships). For old span schemas, follow [legacy database recovery](#reset-db).
+Correlate spans to requests on both `app_id` and `trace_id`. Multiple requests can share a trace and each trace can have many spans, so joins can multiply counts. See [relationships](duckdb_tables.md#relationships). For old span schemas, follow [legacy database recovery](#reset-db).
 
 To store full details for a request found in request logs (substitute its app ID and UUID):
 

@@ -110,7 +110,7 @@ Exit code 2 comes from clap (usage errors). `check_response` in `utils.rs` centr
 
 `traces --db` and `request-details --db` populate the same `spans` table, keyed by `(app_id, trace_id, span_id)`. Both replace complete matching rows; omitted columns become null. Request-details gets the trace ID from its enclosing response and clears `env`, `events`, `scope_name`, and `scope_version`, which its span objects omit. Other spans remain untouched, including on empty responses.
 
-Join request logs to spans on both `app_id` and `trace_id`, not request UUID. Request logs require explicit `trace_id` field selection. A legacy `spans.request_uuid` schema produces an input error without deleting records; explicit `reset-db` clears all tables, or a new database file preserves the old data.
+Join request logs to spans on both `app_id` and `trace_id`, not request UUID. A legacy `spans.request_uuid` schema produces an input error without deleting records; explicit `reset-db` clears all tables, or a new database file preserves the old data.
 
 ### HTTP conventions
 

@@ -221,11 +221,12 @@ enum Command {
         /// response_body_json, client_ip, client_country_iso_code, exception_type,
         /// exception_message, exception_stacktrace, sentry_event_id, trace_id.
         ///
-        /// Always included: timestamp, request_uuid, method, url.
+        /// Always included: timestamp, request_uuid, method, url, trace_id.
         ///
         /// Defaults to all fields except request_headers, request_body_json,
         /// response_headers, response_body_json, exception_type, exception_message,
-        /// exception_stacktrace, sentry_event_id, trace_id.
+        /// exception_stacktrace, sentry_event_id.
+        /// With --db, refetching replaces whole rows; omitted fields become null.
         #[arg(long)]
         fields: Option<String>,
 
@@ -278,7 +279,7 @@ enum Command {
     ///
     /// With --db, replaces matching rows in the shared `spans` table. Omitted
     /// fields become null, including when request-details later writes a span.
-    /// Join request_logs by app_id and trace_id; request-log trace_id is opt-in.
+    /// Join request_logs by app_id and trace_id.
     Traces {
         #[command(flatten)]
         api: ApiArgs,

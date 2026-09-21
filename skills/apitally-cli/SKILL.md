@@ -84,7 +84,7 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
        --group-by '["method","path"]' --interval day --db
      ```
 
-   - **Request logs** - for individual requests: errors, exceptions, headers, payloads, or requests to correlate with traces. Explicitly include `trace_id` in `--fields` for correlation; it is not a default field. Narrow fields and filters to avoid unnecessary volume. Refetching replaces existing records in DuckDB (no duplicates).
+   - **Request logs** - for individual requests: errors, exceptions, headers, payloads, or requests to correlate with traces. Narrow fields and filters to avoid unnecessary volume. Refetching replaces whole records in DuckDB, clearing omitted fields; select every field still needed.
 
      ```
      npx @apitally/cli request-logs <app-id> --since "<since>" \
@@ -170,11 +170,11 @@ Filters select spans, not whole traces. Samples, limits, and time bounds can omi
 
 ### Correlate request logs with spans
 
-Select `trace_id` explicitly, find relevant IDs, then expand them using the trace-ID fetch above:
+Find request trace IDs, then expand them using the trace-ID fetch above:
 
 ```bash
 npx @apitally/cli request-logs 1 --since 24h \
-  --fields 'trace_id,status_code,response_time_ms' --db
+  --fields 'status_code,response_time_ms' --db
 npx @apitally/cli sql "SELECT request_uuid, trace_id, status_code, response_time_ms FROM request_logs WHERE app_id = 1 AND epoch_ns(timestamp) >= epoch_ns(current_timestamp) - 86400000000000 AND trace_id IS NOT NULL ORDER BY response_time_ms DESC LIMIT 20"
 ```
 
