@@ -310,12 +310,13 @@ mod tests {
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(sample_request_details_json())
+            .create()
     }
 
     #[test]
     fn test_run_json() {
         let mut server = mockito::Server::new();
-        let mock = mock_request_details_endpoint(&mut server, 1, "abc-123").create();
+        let mock = mock_request_details_endpoint(&mut server, 1, "abc-123");
 
         let mut buf = Vec::new();
         run(
@@ -341,10 +342,23 @@ mod tests {
     #[test]
     fn test_run_with_db() {
         let mut server = mockito::Server::new();
-        let mock = mock_request_details_endpoint(&mut server, 1, "abc-123")
-            .expect(2)
-            .create();
+        let mock = mock_request_details_endpoint(&mut server, 1, "abc-123");
         let (_dir, db_path) = temp_db();
+        let conn = open_db(&db_path).unwrap();
+        ensure_spans_table(&conn).unwrap();
+        conn.execute_batch(
+            "INSERT INTO spans (app_id, trace_id, span_id, parent_span_id, env, name, kind, status,
+                start_time_ns, end_time_ns, duration_ns, attributes, events, scope_name, scope_version)
+             VALUES (1, '0000000000000000aaaaaaaaaaaaaaaa', '00000000000000aa', '00000000000000bb',
+                'staging', 'old name', 'CLIENT', 'ERROR', 1, 2, 1, '{}',
+                '[{\"name\":\"exception\"}]', 'test', '1.0');
+             INSERT INTO spans (app_id, trace_id, span_id, start_time_ns, name) VALUES
+                (1, '0000000000000000aaaaaaaaaaaaaaaa', '00000000000000bb', 1, 'sibling'),
+                (1, '0000000000000000bbbbbbbbbbbbbbbb', '00000000000000aa', 1, 'other trace'),
+                (2, '0000000000000000aaaaaaaaaaaaaaaa', '00000000000000aa', 1, 'other app');",
+        )
+        .unwrap();
+        drop(conn);
         let mut buf = Vec::new();
 
         run(
@@ -356,6 +370,7 @@ mod tests {
             &mut buf,
         )
         .unwrap();
+        mock.assert();
         assert!(buf.is_empty());
 
         let conn = open_db(&db_path).unwrap();
@@ -381,31 +396,6 @@ mod tests {
             .unwrap();
         assert_eq!(log_message, "handling request");
 
-        conn.execute_batch(
-            "UPDATE spans SET parent_span_id = '00000000000000bb', env = 'staging',
-                name = 'old name', kind = 'CLIENT', status = 'ERROR', start_time_ns = 1,
-                end_time_ns = 2, duration_ns = 1, attributes = '{}',
-                events = '[{\"name\":\"exception\"}]', scope_name = 'test', scope_version = '1.0';
-             INSERT INTO spans (app_id, trace_id, span_id, start_time_ns, name) VALUES
-                (1, '0000000000000000aaaaaaaaaaaaaaaa', '00000000000000bb', 1, 'sibling'),
-                (1, '0000000000000000bbbbbbbbbbbbbbbb', '00000000000000aa', 1, 'other trace'),
-                (2, '0000000000000000aaaaaaaaaaaaaaaa', '00000000000000aa', 1, 'other app');",
-        )
-        .unwrap();
-
-        drop(conn);
-        run(
-            1,
-            "abc-123",
-            Some(&db_path),
-            Some("test-key"),
-            Some(&server.url()),
-            &mut buf,
-        )
-        .unwrap();
-        mock.assert();
-
-        let conn = open_db(&db_path).unwrap();
         let span_json: String = conn
             .query_row(
                 "SELECT to_json(spans) FROM spans JOIN request_logs
