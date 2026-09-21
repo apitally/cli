@@ -92,6 +92,7 @@ CREATE TABLE request_logs (
     app_id                  INTEGER NOT NULL,
     timestamp               TIMESTAMPTZ NOT NULL,
     request_uuid            VARCHAR NOT NULL,
+    trace_id                VARCHAR,            -- OpenTelemetry trace ID (hex)
     env                     VARCHAR,            -- environment name, e.g. "prod"
     method                  VARCHAR NOT NULL,
     path                    VARCHAR,            -- parameterized route template, e.g. /users/{user_id}
@@ -111,7 +112,6 @@ CREATE TABLE request_logs (
     exception_message       VARCHAR,
     exception_stacktrace    VARCHAR,
     sentry_event_id         VARCHAR,
-    trace_id                VARCHAR,            -- OpenTelemetry trace ID (hex)
     UNIQUE (app_id, request_uuid)
 );
 ```
