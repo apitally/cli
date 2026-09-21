@@ -187,6 +187,7 @@ Timestamps without timezone are treated as UTC. Results are ordered by timestamp
 | ------------------------- | -------------------------------- | ------- |
 | `timestamp`               | string (datetime)                | yes     |
 | `request_uuid`            | string (ID)                      | yes     |
+| `trace_id`                | string (ID)                      | yes     |
 | `env`                     | string                           | yes     |
 | `method`                  | string                           | yes     |
 | `path`                    | string                           | yes     |
@@ -206,11 +207,8 @@ Timestamps without timezone are treated as UTC. Results are ordered by timestamp
 | `exception_message`       | string                           | no      |
 | `exception_stacktrace`    | string                           | no      |
 | `sentry_event_id`         | string (ID)                      | no      |
-| `trace_id`                | string (ID), or null              | yes     |
 
-Default fields are included when `--fields` is omitted. Providing `--fields` replaces the defaults, but `timestamp`, `request_uuid`, `method`, `url`, and `trace_id` are always included, even with `--fields '[]'`. With `--db`, refetching replaces complete matching rows and sets omitted columns to `NULL`; select every field still needed.
-
-Use non-null `trace_id` values with [traces](#traces) to retrieve available spans without discovery-only filters, sampling, or unnecessary time bounds.
+Default fields are included when `--fields` is omitted. Providing `--fields` replaces the defaults, but `timestamp`, `request_uuid`, `trace_id`, `method`, and `url` are always included. With `--db`, refetching replaces complete matching rows and sets omitted columns to `NULL`.
 
 ### Filters
 

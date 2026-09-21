@@ -1,12 +1,11 @@
 ---
 name: apitally-cli
 description: >
-  Retrieve and investigate API metrics, request logs, traces, and spans from Apitally.
-  Fetches metrics, request logs, trace spans, consumers, and app metadata via the CLI,
+  Retrieve and investigate API metrics, request logs, and traces from Apitally.
+  Fetches aggregated metrics, request logs, traces, consumers, and app metadata via the CLI,
   stores data in a local DuckDB database, and runs SQL queries to investigate issues
   or answer questions. Use when the user mentions Apitally, the Apitally CLI, API
-  metrics, API request logs, API consumers, slow database or external calls,
-  trace IDs, span errors, or instrumentation events.
+  metrics, request logs, traces, or API consumers.
 ---
 
 # Apitally CLI
@@ -15,7 +14,7 @@ The Apitally CLI retrieves data from [Apitally](https://apitally.io) and optiona
 
 - **Metrics** — pre-aggregated data (request counts, error rates, response time percentiles, throughput). Retention: **30 days** at 1-minute intervals, **13 months** at 30-minute intervals.
 - **Request logs** - individual API requests with method, URL, status code, response time, consumer, headers, payloads, exceptions, and trace IDs. Retention: **15 days**.
-- **Trace spans** - individual operations such as database queries and external calls, with duration, status, attributes, and events. Availability depends on ingestion, configuration, and span retention.
+- **Traces** - individual operations such as database queries and external calls, with duration, status, attributes, and events. Availability depends on ingestion, configuration, and span retention.
 
 Run commands with `npx` (no install needed):
 
@@ -25,7 +24,7 @@ npx @apitally/cli <command> [--api-key <key>]
 
 A team-scoped API key is required to use the CLI. The `auth` command saves an API key to `~/.apitally/auth.json`, which is then used by all subsequent commands unless overridden by the `--api-key` flag. If any command exits with code 3 (auth error), ask the user to run `npx @apitally/cli auth` to authenticate, then continue.
 
-List results and SQL queries output NDJSON to stdout. `request-details` and `whoami` return one JSON object; setup/reset status messages go to stderr. With `--db`, fetching commands write to DuckDB instead (`~/.apitally/data.duckdb` by default), enabling queries via `sql`.
+List results and SQL queries output NDJSON to stdout by default. With `--db`, fetching commands write to DuckDB instead (`~/.apitally/data.duckdb` by default), enabling queries via `sql`.
 
 ## Key Concepts
 
@@ -33,8 +32,7 @@ List results and SQL queries output NDJSON to stdout. `request-details` and `who
 - **Consumer** — An API client or user tracked by Apitally. `consumer_id` is a numeric internal ID (surrogate key, used in request log filters and JOINs). `identifier` is a string set by the application (e.g. email, username) to uniquely identify the consumer. `name` is a display name (auto-generated from `identifier` if not explicitly set). `group` is an optional group name.
 - **Path vs URL** — `path` is the parameterized route template (e.g. `/users/{user_id}`), good for grouping by endpoint. `url` is the full request URL with actual values and query parameters (e.g. `https://api.example.com/users/123?limit=10`).
 - **Application logs** — Server-side log entries emitted by application code during request handling. Only available via `request-details` as the `logs` field.
-- **Spans** - OpenTelemetry units of work retrieved through `traces` or `request-details`. Identity is `(app_id, trace_id, span_id)`; parent links use `parent_span_id` within the same app and trace. Spans can exist without request logs. Multiple requests can share a trace.
-- **Shared span storage** - Both fetching commands write to one `spans` table. The latest fetch replaces complete matching rows, clearing omitted columns. Request-details clears span `env`, `events`, `scope_name`, and `scope_version`. Other spans remain, including on an empty response.
+- **Traces and spans** - Spans are OpenTelemetry units of work retrieved through `traces` or `request-details`. Identity is `(app_id, trace_id, span_id)`; parent links use `parent_span_id` within the same app and trace. Spans can exist without request logs. Multiple requests can share a trace.
 
 ## Command Quick Reference
 
@@ -47,7 +45,7 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
 - `endpoints <app-id> [--method <methods>] [--path <pattern>] [--db [<path>]]` -- list endpoints for an app
 - `metrics <app-id> --since <dt> [--until <dt>] --metrics <json> [--interval <interval>] [--group-by <json>] [--filters <json>] [--timezone <tz>] [--db [<path>]]` -- fetch aggregated metrics
 - `request-logs <app-id> --since <dt> [--until <dt>] [--fields <json>] [--filters <json>] [--sample <n|rate>] [--limit <n>] [--db [<path>]]` -- fetch request logs (max 1,000,000 rows at once)
-- `traces <app-id> [--since <dt>] [--until <dt>] [--fields <json>] [--filters <json>] [--sample <n|rate>] [--limit <n>] [--db [<path>]]` -- fetch individual spans; `--since` is required unless a nonempty positive `trace_id` filter uses `eq` or `in`
+- `traces <app-id> [--since <dt>] [--until <dt>] [--fields <json>] [--filters <json>] [--sample <n|rate>] [--limit <n>] [--db [<path>]]` -- fetch individual spans; `--since` is required unless a `trace_id` filter is applied
 - `request-details <app-id> <request-uuid> [--db [<path>]]` -- fetch full details for a single request (including headers, payloads, exception info, application logs, and spans)
 - `sql "<query>" [--db <path>]` -- run SQL against local DuckDB
 - `reset-db [--db <path>]` -- drop and recreate all tables in local DuckDB
@@ -56,7 +54,7 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
 
 1. **Identify the app** — run `npx @apitally/cli apps` to list apps and get their IDs. If there is more than one app, and the correct app can't be inferred from the user's messages, ask the user which app they mean. Use the app ID consistently for all commands and SQL `WHERE` conditions throughout the investigation.
 
-2. **Determine the time range** - use the user's range or default to the last 7 days for discovery. Keep fetch flags and SQL scope consistent. For known trace IDs, omit unnecessary time bounds to include available sibling spans outside the discovery window.
+2. **Determine the time range** — check if the user specified a time range (e.g. "last 24 hours", "since Monday", a specific date). If not, default to the last 7 days. Use this time range consistently for `--requests-since` / `--since` / `--until` flags and SQL `WHERE` conditions throughout the investigation.
 
 3. **Fetch supporting data if needed** — skip unless you need endpoint discovery or consumer identification.
    - **Endpoints**: use `endpoints` to discover available method/path combinations for filtering. Use `--method` and/or `--path` to filter (e.g. `--path '*users*'`).
@@ -157,7 +155,7 @@ npx @apitally/cli traces 1 --since 24h \
 npx @apitally/cli sql "SELECT trace_id, span_id, name, duration_ns / 1000000.0 AS duration_ms FROM spans WHERE app_id = 1 AND start_time_ns >= epoch_ns(current_timestamp) - 86400000000000 AND duration_ns >= 100000000 ORDER BY duration_ns DESC LIMIT 20"
 ```
 
-Fetch all available spans for a discovered trace ID. Keep only the positive trace-ID filter, remove sampling and unnecessary time bounds or lower limits, and select the fields needed for the investigation. `--fields` replaces defaults, so this example lists all fields:
+Fetch all available spans for a discovered trace ID. Keep only the trace-ID filter, remove sampling and time bounds, and select the fields needed for the investigation. `--fields` replaces defaults, so this example lists all fields:
 
 ```bash
 npx @apitally/cli traces 1 \
@@ -256,7 +254,7 @@ GROUP BY day ORDER BY day
 
 ## Legacy Database Recovery
 
-If a command reports an incompatible legacy span schema, preserve the old file by choosing a new `--db` path, or obtain user permission to run `reset-db` against the same path and refetch. Reset clears **all tables**, not just spans. Data beyond API retention may no longer be available. See [reset-db](references/commands.md#reset-db) for exact commands.
+If a command reports an incompatible legacy database schema, preserve the old file by choosing a new `--db` path, or obtain user permission to run `reset-db` against the same path and refetch. See [reset-db](references/commands.md#reset-db) for exact commands.
 
 ## Exit Codes
 

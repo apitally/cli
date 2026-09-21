@@ -82,12 +82,12 @@ You can also set the API key via the `APITALLY_API_KEY` environment variable or 
 | `endpoints`       | List endpoints for an app                       |
 | `metrics`         | Fetch aggregated metrics for an app             |
 | `request-logs`    | Fetch request log data for an app               |
-| `traces`          | Fetch trace spans for an app                    |
 | `request-details` | Fetch full details for a specific request       |
+| `traces`          | Fetch trace spans for an app                    |
 | `sql`             | Run SQL queries against a local DuckDB database |
 | `reset-db`        | Drop and recreate all tables in local DuckDB    |
 
-List results and SQL queries output NDJSON to stdout. `request-details` and `whoami` return one JSON object; setup/reset status messages go to stderr. Use the `--db` flag on data-fetching commands to write to a local DuckDB database instead, then query it with `sql`. The database defaults to `~/.apitally/data.duckdb` if no other path is specified.
+List results and SQL queries output NDJSON to stdout. Use the `--db` flag on data-fetching commands to write to a local DuckDB database instead, then query it with `sql`. The database defaults to `~/.apitally/data.duckdb` if no other path is specified.
 
 `traces --db` and `request-details --db` share the `spans` table, keyed by app, trace, and span IDs. Refetching replaces complete matching rows, clearing omitted fields. Existing databases with the old request-based span schema require an explicit reset and refetch: `reset-db` clears **all tables**. Use a new database file instead to preserve the old data; data beyond API retention may not be available to refetch.
 
