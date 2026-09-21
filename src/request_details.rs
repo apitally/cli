@@ -310,13 +310,12 @@ mod tests {
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(sample_request_details_json())
-            .create()
     }
 
     #[test]
     fn test_run_json() {
         let mut server = mockito::Server::new();
-        let mock = mock_request_details_endpoint(&mut server, 1, "abc-123");
+        let mock = mock_request_details_endpoint(&mut server, 1, "abc-123").create();
 
         let mut buf = Vec::new();
         run(
@@ -342,7 +341,9 @@ mod tests {
     #[test]
     fn test_run_with_db() {
         let mut server = mockito::Server::new();
-        let mock = mock_request_details_endpoint(&mut server, 1, "abc-123");
+        let mock = mock_request_details_endpoint(&mut server, 1, "abc-123")
+            .expect(2)
+            .create();
         let (_dir, db_path) = temp_db();
         let mut buf = Vec::new();
 
@@ -355,8 +356,6 @@ mod tests {
             &mut buf,
         )
         .unwrap();
-        mock.assert();
-        mock.remove();
         assert!(buf.is_empty());
 
         let conn = open_db(&db_path).unwrap();
@@ -406,7 +405,6 @@ mod tests {
         .unwrap();
 
         drop(conn);
-        let mock = mock_request_details_endpoint(&mut server, 1, "abc-123");
         run(
             1,
             "abc-123",
@@ -430,25 +428,17 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
+        let response: serde_json::Value =
+            serde_json::from_str(sample_request_details_json()).unwrap();
+        let mut expected = response["spans"][0].clone();
+        expected["app_id"] = serde_json::json!(1);
+        expected["trace_id"] = response["trace_id"].clone();
+        for field in ["env", "events", "scope_name", "scope_version"] {
+            expected[field] = serde_json::Value::Null;
+        }
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(&span_json).unwrap(),
-            serde_json::json!({
-                "app_id": 1,
-                "trace_id": "0000000000000000aaaaaaaaaaaaaaaa",
-                "span_id": "00000000000000aa",
-                "parent_span_id": null,
-                "env": null,
-                "name": "GET /test",
-                "kind": "SERVER",
-                "status": "OK",
-                "start_time_ns": 1735689600000000000_i64,
-                "end_time_ns": 1735689600050000000_i64,
-                "duration_ns": 50000000,
-                "attributes": {"http.method": "GET"},
-                "events": null,
-                "scope_name": null,
-                "scope_version": null,
-            })
+            expected
         );
         let span_names: Vec<String> = conn
             .prepare("SELECT name FROM spans ORDER BY name")
@@ -541,10 +531,7 @@ mod tests {
                 &mut buf,
             )
             .unwrap_err();
-            assert!(matches!(
-                err.downcast_ref::<crate::utils::CliError>(),
-                Some(crate::utils::CliError::Input(_))
-            ));
+            assert_eq!(crate::exit_code(&err), 4);
             assert!(err.to_string().contains("reset-db"));
             assert!(buf.is_empty());
             let conn = open_db(&db_path).unwrap();

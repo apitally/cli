@@ -29,16 +29,14 @@ pub fn run(
     let api_key = resolve_api_key(api_key)?;
     let api_base_url = resolve_api_base_url(api_base_url);
     let db = db.map(|p| open_db(p).map(|c| (p, c))).transpose()?;
-    let since = since.map(resolve_relative_datetime);
-    let until = until.map(resolve_relative_datetime);
 
     let format = if db.is_some() { "arrow" } else { "ndjson" };
     let mut body = serde_json::json!({"format": format});
-    if let Some(ref since) = since {
-        body["since"] = serde_json::json!(since);
+    if let Some(since) = since {
+        body["since"] = resolve_relative_datetime(since).into();
     }
-    if let Some(ref until) = until {
-        body["until"] = serde_json::json!(until);
+    if let Some(until) = until {
+        body["until"] = resolve_relative_datetime(until).into();
     }
     if let Some(fields) = fields {
         body["fields"] = parse_string_list(fields)
@@ -203,7 +201,7 @@ fn remove_event_timezone(batch: RecordBatch) -> Result<RecordBatch> {
             .clone()
             .with_data_type(DataType::Struct(event_fields)),
     ));
-    let mut columns = batch.columns().to_vec();
+    let (_, mut columns, _) = batch.into_parts();
     columns[index] = cast(&columns[index], &events_type)?;
     let mut fields = schema.fields().to_vec();
     fields[index] = Arc::new(schema.field(index).clone().with_data_type(events_type));
@@ -216,7 +214,6 @@ fn remove_event_timezone(batch: RecordBatch) -> Result<RecordBatch> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::CliError;
     use crate::utils::test_utils::{parse_ndjson, temp_db};
     use duckdb::arrow::array::StringArray;
     use duckdb::arrow::compute::concat_batches;
@@ -229,10 +226,7 @@ mod tests {
     #[test]
     fn test_run_ndjson() {
         let filters = r#"[{"field":"trace_id","op":"eq","value":"0123456789abcdef0123456789abcdef"},{"field":"attributes","key":"retry.count","op":"gte","value":2},{"field":"events","event_name":"exception","op":"exists"}]"#;
-        let response = concat!(
-            r#"{"trace_id":"0123456789abcdef0123456789abcdef","span_id":"0123456789abcdef","start_time_ns":1767225600123456001,"attributes":{"db.system":"\"postgresql\"","retry.count":"2","cached":"true"},"events":[{"timestamp":"2026-01-01T00:00:00.123456001Z","name":"exception","attributes":{"exception.type":"\"TimeoutError\""}}]}"#,
-            "\n"
-        );
+        let response = include_bytes!("../tests/fixtures/traces-all.ndjson");
         for fields in ["attributes,events", r#"["attributes","events"]"#] {
             let mut server = mockito::Server::new();
             let mock = server
@@ -260,7 +254,7 @@ mod tests {
             )
             .unwrap();
             mock.assert();
-            assert_eq!(output, response.as_bytes());
+            assert_eq!(output, response);
         }
 
         for (sample, expected) in [
@@ -374,10 +368,7 @@ mod tests {
                 Vec::new(),
             )
             .unwrap_err();
-            assert!(matches!(
-                err.downcast_ref::<CliError>(),
-                Some(CliError::Input(_))
-            ));
+            assert_eq!(crate::exit_code(&err), 4);
             assert!(err.to_string().contains(message), "{err}");
         }
 
