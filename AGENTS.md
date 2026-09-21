@@ -16,8 +16,8 @@ src/
   endpoints.rs          Endpoints command (fetch, DB write)
   metrics.rs            Metrics command (Arrow IPC or NDJSON streaming)
   request_logs.rs       Request logs command (Arrow IPC or NDJSON streaming)
-  traces.rs             Traces command (Arrow IPC or NDJSON streaming, shared spans table)
   request_details.rs    Request details command (single request fetch, DB write)
+  traces.rs             Traces command (Arrow IPC or NDJSON streaming)
   sql.rs                SQL command (query DuckDB, output NDJSON)
   utils.rs              Shared helpers (open DuckDB connection, check HTTP response)
 npm/
@@ -105,12 +105,6 @@ Each command module exposes a `pub fn run(...)` that does all the work: resolve 
 | `api_err()`   | 5         | Server errors, transport failures |
 
 Exit code 2 comes from clap (usage errors). `check_response` in `utils.rs` centralizes HTTP status-to-error mapping.
-
-### Shared span storage
-
-`traces --db` and `request-details --db` populate the same `spans` table, keyed by `(app_id, trace_id, span_id)`. Both replace complete matching rows; omitted columns become null. Request-details gets the trace ID from its enclosing response and clears `env`, `events`, `scope_name`, and `scope_version`, which its span objects omit. Other spans remain untouched, including on empty responses.
-
-Join request logs to spans on both `app_id` and `trace_id`, not request UUID. A legacy `spans.request_uuid` schema produces an input error without deleting records; explicit `reset-db` clears all tables, or a new database file preserves the old data.
 
 ### HTTP conventions
 
