@@ -70,19 +70,9 @@ FROM request_logs
 WHERE app_id = 123
   AND timestamp >= '2025-01-01'
   AND status_code >= 400
-```
 
-## Span Attributes and Events
-
-Span and event attributes contain native JSON values, for example:
-
-```json
-{"db.system":"postgresql","retry.count":2,"cached":true}
-```
-
-Quote keys containing literal dots as a single JSONPath key (`$."db.system"`). These examples assume app `1` and the shown trace ID were fetched with `attributes` and `events` selected. Substitute your investigation's IDs.
-
-```sql
+-- Extract native JSON span attributes (fetch with attributes selected)
+-- Quote keys containing literal dots as a single JSONPath key
 SELECT span_id,
        attributes->>'$."db.system"' AS db_system,
        (attributes->>'$."retry.count"')::BIGINT AS retry_count,
@@ -90,11 +80,8 @@ SELECT span_id,
 FROM spans
 WHERE app_id = 1
   AND trace_id = '0123456789abcdef0123456789abcdef';
-```
 
-Expand events with `json_each`:
-
-```sql
+-- Expand span events (fetch with events selected)
 SELECT s.span_id,
        event.value->>'$.timestamp' AS event_timestamp_utc,
        event.value->>'$.name' AS event_name,
@@ -104,8 +91,6 @@ WHERE s.app_id = 1
   AND s.trace_id = '0123456789abcdef0123456789abcdef'
   AND (event.value->>'$.name') = 'exception';
 ```
-
-Event timestamps are ISO 8601 UTC strings. Keep them as strings to preserve nanoseconds; casting to `TIMESTAMPTZ` can lose sub-microsecond precision. Use integer `start_time_ns`/`end_time_ns` for exact span-time comparisons.
 
 ## Scalar Functions
 

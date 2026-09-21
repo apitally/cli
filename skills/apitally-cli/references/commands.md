@@ -297,7 +297,7 @@ Without `--db`, the CLI streams NDJSON to stdout unchanged. With `--db`, it stre
 
 Omitting `--fields` selects defaults. Providing it replaces the default set: the API prepends `trace_id`, `span_id`, and `start_time_ns`, removes duplicates, then includes requested fields. `--fields '[]'` returns only those three required fields. In DB mode, refetching required-only fields clears all optional columns of matching rows.
 
-Span and event attributes contain native JSON values. Event timestamps are ISO 8601 UTC strings with nanosecond precision, also preserved in DuckDB JSON. Selected empty collections are `{}` and `[]`; omitted fields become SQL `NULL`. See [JSON extraction examples](duckdb_json_functions.md#span-attributes-and-events).
+Span and event attributes contain native JSON values. Event timestamps are ISO 8601 UTC strings with nanosecond precision, also preserved in DuckDB JSON. Selected empty collections are `{}` and `[]`; omitted fields become SQL `NULL`. See [JSON extraction examples](duckdb_json_functions.md#examples).
 
 ### Filters
 

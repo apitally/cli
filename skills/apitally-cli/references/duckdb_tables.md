@@ -160,7 +160,7 @@ CREATE TABLE spans (
 
 Both `traces --db` and `request-details --db` populate this table.
 
-`attributes` is a JSON object with native JSON values. `events` is a JSON array of objects with `timestamp`, `name`, and `attributes`. Event timestamps are ISO 8601 UTC strings with nanosecond precision. See [attribute and event SQL examples](duckdb_json_functions.md#span-attributes-and-events).
+`attributes` is a JSON object with native JSON values. `events` is a JSON array of objects with `timestamp`, `name`, and `attributes`. Event timestamps are ISO 8601 UTC strings.
 
 ### Legacy schema
 
