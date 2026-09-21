@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::auth::{resolve_api_base_url, resolve_api_key};
 use crate::request_logs::ensure_request_logs_table;
+use crate::traces::ensure_spans_table;
 use crate::utils::{api_get, open_db};
 
 #[derive(Deserialize, Serialize)]
@@ -75,25 +76,6 @@ pub(crate) fn ensure_application_logs_table(conn: &duckdb::Connection) -> Result
             logger VARCHAR,
             file VARCHAR,
             line INTEGER
-        )",
-    )?;
-    Ok(())
-}
-
-pub(crate) fn ensure_spans_table(conn: &duckdb::Connection) -> Result<()> {
-    conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS spans (
-            app_id INTEGER NOT NULL,
-            request_uuid VARCHAR NOT NULL,
-            span_id VARCHAR NOT NULL,
-            parent_span_id VARCHAR,
-            name VARCHAR NOT NULL,
-            kind VARCHAR NOT NULL,
-            start_time_ns BIGINT NOT NULL,
-            end_time_ns BIGINT NOT NULL,
-            duration_ns BIGINT NOT NULL,
-            status VARCHAR NOT NULL,
-            attributes JSON
         )",
     )?;
     Ok(())
@@ -186,32 +168,28 @@ fn write_application_logs_to_db(
 fn write_spans_to_db(
     conn: &duckdb::Connection,
     app_id: i64,
-    request_uuid: &str,
+    trace_id: &str,
     spans: &[SpanItem],
 ) -> Result<()> {
-    conn.execute(
-        "DELETE FROM spans WHERE app_id = ? AND request_uuid = ?",
-        duckdb::params![app_id, request_uuid],
-    )?;
     let mut stmt = conn.prepare(
-        "INSERT INTO spans (
-            app_id, request_uuid, span_id, parent_span_id, name, kind,
-            start_time_ns, end_time_ns, duration_ns, status, attributes
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT OR REPLACE INTO spans (
+            app_id, trace_id, span_id, parent_span_id, env, name, kind, status,
+            start_time_ns, end_time_ns, duration_ns, attributes, events, scope_name, scope_version
+        ) VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)",
     )?;
     for span in spans {
         let attributes = serde_json::to_string(&span.attributes)?;
         stmt.execute(duckdb::params![
             app_id,
-            request_uuid,
+            trace_id,
             &span.span_id,
             &span.parent_span_id,
             &span.name,
             &span.kind,
+            &span.status,
             span.start_time_ns,
             span.end_time_ns,
             span.duration_ns,
-            &span.status,
             &attributes,
         ])?;
     }
@@ -237,13 +215,15 @@ pub fn run(
     let data: RequestDetailsResponse = response.body_mut().read_json()?;
 
     if let Some((db_path, conn)) = &db {
+        ensure_spans_table(conn)?;
         ensure_request_logs_table(conn)?;
         ensure_application_logs_table(conn)?;
-        ensure_spans_table(conn)?;
 
         write_request_details_to_db(conn, app_id, &data)?;
         write_application_logs_to_db(conn, app_id, &data.request_uuid, &data.logs)?;
-        write_spans_to_db(conn, app_id, &data.request_uuid, &data.spans)?;
+        if let Some(trace_id) = &data.trace_id {
+            write_spans_to_db(conn, app_id, trace_id, &data.spans)?;
+        }
 
         eprintln!(
             "Request details written to tables 'request_logs', 'application_logs', 'spans' in {}.\nDone.",
@@ -364,6 +344,7 @@ mod tests {
         let mut server = mockito::Server::new();
         let mock = mock_request_details_endpoint(&mut server, 1, "abc-123");
         let (_dir, db_path) = temp_db();
+        let mut buf = Vec::new();
 
         run(
             1,
@@ -371,10 +352,12 @@ mod tests {
             Some(&db_path),
             Some("test-key"),
             Some(&server.url()),
-            Vec::new(),
+            &mut buf,
         )
         .unwrap();
         mock.assert();
+        mock.remove();
+        assert!(buf.is_empty());
 
         let conn = open_db(&db_path).unwrap();
 
@@ -400,8 +383,202 @@ mod tests {
         assert_eq!(log_message, "handling request");
 
         let span_name: String = conn
-            .query_row("SELECT name FROM spans", [], |row| row.get(0))
+            .query_row(
+                "SELECT spans.name FROM spans JOIN request_logs
+                 ON spans.app_id = request_logs.app_id AND spans.trace_id = request_logs.trace_id
+                 WHERE request_logs.request_uuid = 'abc-123'",
+                [],
+                |row| row.get(0),
+            )
             .unwrap();
         assert_eq!(span_name, "GET /test");
+
+        conn.execute_batch(
+            "UPDATE spans SET parent_span_id = '00000000000000bb', env = 'staging',
+                name = 'old name', kind = 'CLIENT', status = 'ERROR', start_time_ns = 1,
+                end_time_ns = 2, duration_ns = 1, attributes = '{}',
+                events = '[{\"name\":\"exception\"}]', scope_name = 'test', scope_version = '1.0';
+             INSERT INTO spans (app_id, trace_id, span_id, start_time_ns, name) VALUES
+                (1, '0000000000000000aaaaaaaaaaaaaaaa', '00000000000000bb', 1, 'sibling'),
+                (1, '0000000000000000bbbbbbbbbbbbbbbb', '00000000000000aa', 1, 'other trace'),
+                (2, '0000000000000000aaaaaaaaaaaaaaaa', '00000000000000aa', 1, 'other app');",
+        )
+        .unwrap();
+
+        drop(conn);
+        let mock = mock_request_details_endpoint(&mut server, 1, "abc-123");
+        run(
+            1,
+            "abc-123",
+            Some(&db_path),
+            Some("test-key"),
+            Some(&server.url()),
+            &mut buf,
+        )
+        .unwrap();
+        mock.assert();
+        mock.remove();
+        assert!(buf.is_empty());
+
+        let conn = open_db(&db_path).unwrap();
+        let span_json: String = conn
+            .query_row(
+                "SELECT to_json(spans) FROM spans WHERE app_id = 1
+                 AND trace_id = '0000000000000000aaaaaaaaaaaaaaaa'
+                 AND span_id = '00000000000000aa'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&span_json).unwrap(),
+            serde_json::json!({
+                "app_id": 1,
+                "trace_id": "0000000000000000aaaaaaaaaaaaaaaa",
+                "span_id": "00000000000000aa",
+                "parent_span_id": null,
+                "env": null,
+                "name": "GET /test",
+                "kind": "SERVER",
+                "status": "OK",
+                "start_time_ns": 1735689600000000000_i64,
+                "end_time_ns": 1735689600050000000_i64,
+                "duration_ns": 50000000,
+                "attributes": {"http.method": "GET"},
+                "events": null,
+                "scope_name": null,
+                "scope_version": null,
+            })
+        );
+        let span_names: Vec<String> = conn
+            .prepare("SELECT name FROM spans ORDER BY name")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(
+            span_names,
+            ["GET /test", "other app", "other trace", "sibling"]
+        );
+
+        drop(conn);
+        let mut empty_response: serde_json::Value =
+            serde_json::from_str(sample_request_details_json()).unwrap();
+        empty_response["spans"] = serde_json::json!([]);
+        for trace_id in [
+            serde_json::json!("0000000000000000aaaaaaaaaaaaaaaa"),
+            serde_json::Value::Null,
+        ] {
+            empty_response["trace_id"] = trace_id;
+            let empty_mock = server
+                .mock("GET", "/v1/apps/1/request-logs/abc-123")
+                .match_query(mockito::Matcher::Any)
+                .with_status(200)
+                .with_header("content-type", "application/json")
+                .with_body(empty_response.to_string())
+                .create();
+            run(
+                1,
+                "abc-123",
+                Some(&db_path),
+                Some("test-key"),
+                Some(&server.url()),
+                &mut buf,
+            )
+            .unwrap();
+            empty_mock.assert();
+            empty_mock.remove();
+            let conn = open_db(&db_path).unwrap();
+            let count: i64 = conn
+                .query_row("SELECT count(*) FROM spans", [], |row| row.get(0))
+                .unwrap();
+            assert_eq!(count, 4);
+        }
+        assert!(buf.is_empty());
+    }
+
+    #[test]
+    fn test_run_with_legacy_spans_leaves_database_unchanged() {
+        let mut server = mockito::Server::new();
+        let mock = server
+            .mock("GET", "/v1/apps/1/request-logs/abc-123")
+            .match_query(mockito::Matcher::Any)
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(sample_request_details_json())
+            .expect(2)
+            .create();
+        let (_dir, db_path) = temp_db();
+        let conn = open_db(&db_path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE spans (app_id INTEGER, request_uuid VARCHAR, span_id VARCHAR);
+             INSERT INTO spans VALUES (1, 'abc-123', '00000000000000aa');",
+        )
+        .unwrap();
+
+        drop(conn);
+        for seed_request in [false, true] {
+            let conn = open_db(&db_path).unwrap();
+            if seed_request {
+                ensure_request_logs_table(&conn).unwrap();
+                ensure_application_logs_table(&conn).unwrap();
+                let mut data: RequestDetailsResponse =
+                    serde_json::from_str(sample_request_details_json()).unwrap();
+                data.method = "POST".into();
+                data.logs[0].message = "original log".into();
+                write_request_details_to_db(&conn, 1, &data).unwrap();
+                write_application_logs_to_db(&conn, 1, &data.request_uuid, &data.logs).unwrap();
+            }
+            drop(conn);
+            let mut buf = Vec::new();
+            let err = run(
+                1,
+                "abc-123",
+                Some(&db_path),
+                Some("test-key"),
+                Some(&server.url()),
+                &mut buf,
+            )
+            .unwrap_err();
+            assert!(matches!(
+                err.downcast_ref::<crate::utils::CliError>(),
+                Some(crate::utils::CliError::Input(_))
+            ));
+            assert!(err.to_string().contains("reset-db"));
+            assert!(buf.is_empty());
+            let conn = open_db(&db_path).unwrap();
+            let spans: String = conn
+                .query_row("SELECT to_json(list(spans)) FROM spans", [], |row| {
+                    row.get(0)
+                })
+                .unwrap();
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(&spans).unwrap(),
+                serde_json::json!([{
+                    "app_id": 1, "request_uuid": "abc-123", "span_id": "00000000000000aa"
+                }])
+            );
+            if seed_request {
+                let method: String = conn
+                    .query_row("SELECT method FROM request_logs", [], |row| row.get(0))
+                    .unwrap();
+                let message: String = conn
+                    .query_row("SELECT message FROM application_logs", [], |row| row.get(0))
+                    .unwrap();
+                assert_eq!(method, "POST");
+                assert_eq!(message, "original log");
+            } else {
+                let tables: i64 = conn
+                    .query_row(
+                        "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'main'",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .unwrap();
+                assert_eq!(tables, 1);
+            }
+        }
+        mock.assert();
     }
 }

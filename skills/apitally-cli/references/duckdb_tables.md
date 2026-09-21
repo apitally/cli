@@ -1,6 +1,6 @@
 # DuckDB Table Schemas
 
-Tables are created automatically when using the `--db` flag with `apps`, `consumers`, `endpoints`, `metrics`, `request-logs`, or `request-details` commands. DuckDB uses a [PostgreSQL-compatible SQL dialect](https://duckdb.org/docs/stable/sql/dialect/overview).
+Tables are created automatically when using the `--db` flag with `apps`, `consumers`, `endpoints`, `metrics`, `request-logs`, `traces`, or `request-details` commands. DuckDB uses a [PostgreSQL-compatible SQL dialect](https://duckdb.org/docs/stable/sql/dialect/overview).
 
 ## apps
 
@@ -140,20 +140,35 @@ Populated by the `request-details` command when using `--db`.
 ```sql
 CREATE TABLE spans (
     app_id         INTEGER NOT NULL,
-    request_uuid   VARCHAR NOT NULL,
-    span_id        VARCHAR NOT NULL,          -- OpenTelemetry span ID (hex)
+    trace_id       VARCHAR NOT NULL,
+    span_id        VARCHAR NOT NULL,
     parent_span_id VARCHAR,
-    name           VARCHAR NOT NULL,
-    kind           VARCHAR NOT NULL,          -- e.g. SERVER, CLIENT, INTERNAL
-    start_time_ns  BIGINT NOT NULL,           -- Unix epoch nanoseconds
-    end_time_ns    BIGINT NOT NULL,           -- Unix epoch nanoseconds
-    duration_ns    BIGINT NOT NULL,
-    status         VARCHAR NOT NULL,          -- e.g. OK, ERROR, UNSET
-    attributes     JSON
+    env            VARCHAR,
+    name           VARCHAR,
+    kind           VARCHAR,
+    status         VARCHAR,
+    start_time_ns  BIGINT NOT NULL,
+    end_time_ns    BIGINT,
+    duration_ns    BIGINT,
+    attributes     JSON,
+    events         JSON,
+    scope_name     VARCHAR,
+    scope_version  VARCHAR,
+    UNIQUE (app_id, trace_id, span_id)
 );
 ```
 
-Populated by the `request-details` command when using `--db`.
+Both `traces --db` and `request-details --db` populate this shared table. Trace IDs are 32-character lowercase hex; span IDs are 16-character lowercase hex. Each command replaces the **complete row** for a matching `(app_id, trace_id, span_id)`, setting omitted optional columns to `NULL`. Unreturned spans remain, including when the response is empty.
+
+Request-details takes `trace_id` from its enclosing response. Its span objects omit `env`, `events`, `scope_name`, and `scope_version`, so it clears those columns on replacement. The enclosing request's environment is not used as a per-span environment. All optional columns are nullable to support field selection, even if their selected API values are never null.
+
+`start_time_ns` and `end_time_ns` are Unix epoch nanoseconds; `duration_ns` is a duration in nanoseconds. Use integer bounds for exact time comparisons and `duration_ns / 1000000.0` for milliseconds. Scope persistent queries by `app_id` and relevant trace IDs or start-time bounds.
+
+`attributes` is a JSON object of raw JSON-encoded value strings. `events` is a JSON array of objects with `timestamp`, `name`, and similarly encoded `attributes`. Selected empty collections are `{}` and `[]`; omitted fields are SQL `NULL`. Event timestamps retain nanosecond precision and represent UTC, but JSON formatting may differ from NDJSON (including no timezone suffix). See [attribute and event SQL examples](duckdb_json_functions.md#span-attributes-and-events).
+
+### Legacy span schema
+
+Databases whose `spans` table has `request_uuid` require an explicit reset and refetch. The CLI reports an input error without changing records. With user permission, run `reset-db --db <same-path>` to clear **all tables**, then refetch. Alternatively, fetch into a new database file to retain the old one for inspection. Data beyond API retention may not be available to refetch. See [reset-db](commands.md#reset-db).
 
 ## Relationships
 
@@ -166,4 +181,36 @@ Populated by the `request-details` command when using `--db`.
 - `request_logs.env` matches `app_envs.name` (string, not a foreign key to `app_env_id`)
 - `metrics.env` matches `app_envs.name` (string, only when metrics are grouped by env)
 - `application_logs.request_uuid` references `request_logs.request_uuid` (join on both `app_id` and `request_uuid`)
-- `spans.request_uuid` references `request_logs.request_uuid` (join on both `app_id` and `request_uuid`)
+- `spans.trace_id` matches `request_logs.trace_id` (join on both `app_id` and `trace_id`); explicitly select `trace_id` when fetching request logs because it is not a default field
+- `spans.app_id` references `apps.app_id`
+- `spans.env` matches `app_envs.name`, scoped by `app_id`; populated only if the latest span fetch returned it
+- `spans.parent_span_id` matches another span's `span_id`, scoped by both `app_id` and `trace_id`
+
+Requests and traces are not one-to-one: multiple requests may share a trace, a trace has many spans, and spans may exist without request logs. A direct join can multiply request or span counts. For request counts, use `EXISTS` or deduplicate requests before counting.
+
+For example, count requests associated with a stored error span without multiplying by the number of spans:
+
+```sql
+SELECT count(*) AS request_count
+FROM request_logs r
+WHERE r.app_id = 1
+  AND r.trace_id = '0123456789abcdef0123456789abcdef'
+  AND EXISTS (
+      SELECT 1 FROM spans s
+      WHERE s.app_id = r.app_id AND s.trace_id = r.trace_id
+        AND s.status = 'ERROR'
+  );
+```
+
+Find parent spans within the same trace:
+
+```sql
+SELECT s.span_id, s.name, p.span_id AS parent_span_id, p.name AS parent_name
+FROM spans s
+LEFT JOIN spans p
+  ON p.app_id = s.app_id AND p.trace_id = s.trace_id
+  AND p.span_id = s.parent_span_id
+WHERE s.app_id = 1
+  AND s.trace_id = '0123456789abcdef0123456789abcdef'
+ORDER BY s.start_time_ns, s.span_id;
+```
