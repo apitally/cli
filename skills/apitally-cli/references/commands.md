@@ -246,6 +246,32 @@ Example NDJSON output (without `--db`):
 {"timestamp":"2026-01-01T00:16:00.000Z","request_uuid":"c6d32f8a-0bc1-43c1-b6c5-7d04363dc97c","env":"prod","method":"GET","path":"/test/2","url":"https://api.example.com/test/2","consumer_id":1,"request_size_bytes":0,"status_code":500,"response_time_ms":68,"response_size_bytes":66,"client_ip":"198.51.100.22","client_country_iso_code":"US"}
 ```
 
+## `request-details`
+
+```
+npx @apitally/cli request-details <app-id> <request-uuid> [--db [<path>]]
+```
+
+Get full details for a specific request identified by its UUID, including headers, request/response body, exception info, application logs, and spans. Outputs a JSON object to stdout by default.
+
+- `--db`: Write to `request_logs`, `application_logs`, and `spans` tables in DuckDB instead of outputting JSON to stdout
+
+Correlate spans to requests on both `app_id` and `trace_id`. Multiple requests can share a trace and each trace can have many spans, so joins can multiply counts. See [relationships](duckdb_tables.md#relationships).
+
+To store full details for a request found in request logs (substitute its app ID and UUID):
+
+```bash
+npx @apitally/cli request-details 1 2fbc1df6-3124-4ed1-a376-7d2c64e4d5cf \
+  --db ./trace-investigation.duckdb
+```
+
+Example JSON output (without `--db`):
+
+<!-- prettier-ignore -->
+```json
+{"timestamp":"2026-01-01T00:15:00.000Z","request_uuid":"2fbc1df6-3124-4ed1-a376-7d2c64e4d5cf","env":"prod","method":"GET","path":"/test/1","url":"https://api.example.com/test/1","consumer_id":1,"request_headers":[["content-type","application/json"]],"request_size_bytes":0,"request_body_json":null,"status_code":200,"response_time_ms":122,"response_headers":[["x-request-id","abc"]],"response_size_bytes":66,"response_body_json":"{\"ok\":true}","client_ip":"203.0.113.10","client_country_iso_code":"DE","trace_id":"0123456789abcdef0123456789abcdef","exception":null,"logs":[{"timestamp":"2026-01-01T00:15:00.100Z","message":"handling request","level":"INFO","logger":"app","file":"main.py","line":42}],"spans":[{"span_id":"0123456789abcdef","parent_span_id":null,"name":"GET /test/1","kind":"SERVER","start_time_ns":1767226500000000000,"end_time_ns":1767226500050000000,"duration_ns":50000000,"status":"OK","attributes":{"http.method":"GET"}}]}
+```
+
 ## `traces`
 
 ```
@@ -254,10 +280,10 @@ npx @apitally/cli traces <app-id> [--since <datetime>] \
   [--sample <n|rate>] [--limit <n>] [--db [<path>]]
 ```
 
-Retrieve trace spans for an app. Each NDJSON row is one span, not a whole trace. Spans can exist without a corresponding request log; request-log endpoint exclusions do not apply.
+Retrieve trace spans for an app.
 
 - `--since`: Inclusive span start time (ISO 8601 or relative duration); required unless a nonempty positive `trace_id` filter uses `eq` or `in`
-- `--until`: Exclusive span start time; defaults to now only without a positive trace-ID filter
+- `--until`: Exclusive span start time; defaults to now
 - `--fields`: Comma-separated list or JSON array of field names to include
 - `--filters`: JSON array of filter objects
 - `--sample`: Approximate span count (positive integer, e.g. `1000`) or rate (float > 0 and <= 0.5, e.g. `0.1`)
@@ -272,32 +298,30 @@ Datetimes without a timezone are UTC. If both bounds exist, `since` must precede
 
 Filters return matching spans, not all spans in matching traces. Sampling is approximate and operates on `(trace_id, span_id)`, not whole traces; the limit still applies afterward. Sampling, filters, limits, or time bounds can leave traces incomplete. To expand a discovery result, fetch its trace IDs with only a positive trace-ID filter, removing discovery filters, sampling, and unnecessary bounds or lower limits. The 1,000,000-span cap still applies. Do not treat partial results as complete-trace statistics.
 
-Span availability depends on ingestion, configuration, and span retention. The endpoint allows 1 request/second and 10/minute, with a 30-second query limit.
-
 Without `--db`, the CLI streams NDJSON to stdout unchanged. With `--db`, it streams Arrow into DuckDB; stdout is empty and progress goes to stderr. Both `traces --db` and `request-details --db` populate **one `spans` table**, keyed by `(app_id, trace_id, span_id)`. Each fetch replaces complete matching rows, so omitted optional columns become `NULL`. Other spans remain, including on an empty response. See [legacy database recovery](#reset-db) if an old span schema is detected.
 
 ### Fields
 
-| Field | Type | Default | Always included | Meaning |
+| Field | Type | Default | Always included | Notes |
 | --- | --- | --- | --- | --- |
 | `trace_id` | string (ID) | yes | yes | 32-character lowercase hex |
 | `span_id` | string (ID) | yes | yes | 16-character lowercase hex |
 | `parent_span_id` | string (ID) or null | yes | no | 16-character lowercase hex; null for no parent |
-| `env` | string or null | yes | no | Environment name; empty storage value becomes null |
+| `env` | string or null | yes | no | Environment name |
 | `name` | string | yes | no | Span operation name |
 | `kind` | enum string | yes | no | `UNSPECIFIED`, `INTERNAL`, `SERVER`, `CLIENT`, `PRODUCER`, `CONSUMER` |
-| `status` | enum string | yes | no | `UNSET`, `OK`, `ERROR`; empty storage value becomes `UNSET` |
+| `status` | enum string | yes | no | `UNSET`, `OK`, `ERROR` |
 | `start_time_ns` | int64 | yes | yes | Unix epoch nanoseconds |
 | `end_time_ns` | int64 | yes | no | Unix epoch nanoseconds |
-| `duration_ns` | int64 | yes | no | Nanoseconds, not milliseconds |
-| `attributes` | object | no | no | Attribute names mapped to JSON values (strings, numbers, booleans, arrays, objects, or null) |
+| `duration_ns` | int64 | yes | no | Nanoseconds |
+| `attributes` | object | no | no | Attribute names mapped to JSON values |
 | `events` | array of objects | no | no | Each event has `timestamp`, `name`, and `attributes` |
-| `scope_name` | string or null | no | no | Instrumentation scope; empty becomes null |
-| `scope_version` | string or null | no | no | Instrumentation scope version; empty becomes null |
+| `scope_name` | string or null | no | no | Instrumentation scope |
+| `scope_version` | string or null | no | no | Instrumentation scope version |
 
-Omitting `--fields` selects defaults. Providing it replaces the default set: the API prepends `trace_id`, `span_id`, and `start_time_ns`, removes duplicates, then includes requested fields. `--fields '[]'` returns only those three required fields. In DB mode, refetching required-only fields clears all optional columns of matching rows.
+Omitting `--fields` selects defaults. Providing it replaces the default set: the API prepends `trace_id`, `span_id`, and `start_time_ns`, removes duplicates, then includes requested fields. `--fields '[]'` returns only those three required fields.
 
-Span and event attributes contain native JSON values. Event timestamps are ISO 8601 UTC strings with nanosecond precision, also preserved in DuckDB JSON. Selected empty collections are `{}` and `[]`; omitted fields become SQL `NULL`. See [JSON extraction examples](duckdb_json_functions.md#examples).
+Span and event attributes contain native JSON values. Event timestamps are ISO 8601 UTC strings with nanosecond precision, also preserved in DuckDB JSON. See [JSON extraction examples](duckdb_json_functions.md#examples).
 
 ### Filters
 
@@ -400,32 +424,6 @@ npx @apitally/cli traces 1 \
   --filters '[{"field":"trace_id","op":"in","value":["0123456789abcdef0123456789abcdef"]}]' \
   --fields 'trace_id,span_id,parent_span_id,env,name,kind,status,start_time_ns,end_time_ns,duration_ns,attributes,events,scope_name,scope_version' \
   --db ./trace-investigation.duckdb
-```
-
-## `request-details`
-
-```
-npx @apitally/cli request-details <app-id> <request-uuid> [--db [<path>]]
-```
-
-Get full details for a specific request identified by its UUID, including headers, request/response body, exception info, application logs, and spans. Outputs a JSON object to stdout by default.
-
-- `--db`: Write to `request_logs`, `application_logs`, and `spans` tables in DuckDB instead of outputting JSON to stdout
-
-Correlate spans to requests on both `app_id` and `trace_id`. Multiple requests can share a trace and each trace can have many spans, so joins can multiply counts. See [relationships](duckdb_tables.md#relationships).
-
-To store full details for a request found in request logs (substitute its app ID and UUID):
-
-```bash
-npx @apitally/cli request-details 1 2fbc1df6-3124-4ed1-a376-7d2c64e4d5cf \
-  --db ./trace-investigation.duckdb
-```
-
-Example JSON output (without `--db`):
-
-<!-- prettier-ignore -->
-```json
-{"timestamp":"2026-01-01T00:15:00.000Z","request_uuid":"2fbc1df6-3124-4ed1-a376-7d2c64e4d5cf","env":"prod","method":"GET","path":"/test/1","url":"https://api.example.com/test/1","consumer_id":1,"request_headers":[["content-type","application/json"]],"request_size_bytes":0,"request_body_json":null,"status_code":200,"response_time_ms":122,"response_headers":[["x-request-id","abc"]],"response_size_bytes":66,"response_body_json":"{\"ok\":true}","client_ip":"203.0.113.10","client_country_iso_code":"DE","trace_id":"0123456789abcdef0123456789abcdef","exception":null,"logs":[{"timestamp":"2026-01-01T00:15:00.100Z","message":"handling request","level":"INFO","logger":"app","file":"main.py","line":42}],"spans":[{"span_id":"0123456789abcdef","parent_span_id":null,"name":"GET /test/1","kind":"SERVER","start_time_ns":1767226500000000000,"end_time_ns":1767226500050000000,"duration_ns":50000000,"status":"OK","attributes":{"http.method":"GET"}}]}
 ```
 
 ## `sql`

@@ -14,6 +14,7 @@ pub(crate) fn ensure_request_logs_table(conn: &duckdb::Connection) -> Result<()>
             app_id INTEGER NOT NULL,
             timestamp TIMESTAMPTZ NOT NULL,
             request_uuid VARCHAR NOT NULL,
+            trace_id VARCHAR,
             env VARCHAR,
             method VARCHAR NOT NULL,
             path VARCHAR,
@@ -33,7 +34,6 @@ pub(crate) fn ensure_request_logs_table(conn: &duckdb::Connection) -> Result<()>
             exception_message VARCHAR,
             exception_stacktrace VARCHAR,
             sentry_event_id VARCHAR,
-            trace_id VARCHAR,
             UNIQUE (app_id, request_uuid)
         )",
     )?;

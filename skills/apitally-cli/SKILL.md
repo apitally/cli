@@ -164,7 +164,7 @@ npx @apitally/cli traces 1 \
 npx @apitally/cli sql "SELECT span_id, parent_span_id, name, kind, status, duration_ns / 1000000.0 AS duration_ms FROM spans WHERE app_id = 1 AND trace_id = '0123456789abcdef0123456789abcdef' ORDER BY start_time_ns, span_id"
 ```
 
-Filters select spans, not whole traces. Samples, limits, and time bounds can omit siblings; do not use partial sets as complete-trace statistics. Even an unrestricted ID lookup is subject to ingestion, retention, and the 1,000,000-span cap. See [JSON examples](references/duckdb_json_functions.md#span-attributes-and-events) for querying attributes and events.
+Filters select spans, not whole traces. Samples, limits, and time bounds can omit siblings; do not use partial sets as complete-trace statistics. See [JSON examples](references/duckdb_json_functions.md) for querying attributes and events.
 
 ### Correlate request logs with spans
 
@@ -187,7 +187,7 @@ WHERE r.app_id = 1
 ORDER BY r.request_uuid, s.start_time_ns, s.span_id;
 ```
 
-This can return many rows per request, and multiple requests can share a trace. Use `EXISTS` or deduplication for request counts, as shown in the [schema reference](references/duckdb_tables.md#relationships).
+This can return many rows per request, and multiple requests can share a trace. Use `EXISTS` or deduplication for request counts.
 
 ### Trace a consumer's activity
 
