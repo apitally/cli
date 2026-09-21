@@ -3,7 +3,7 @@ use std::path::Path;
 use anyhow::Result;
 
 use crate::utils::open_db;
-use crate::{apps, consumers, endpoints, metrics, request_details, request_logs};
+use crate::{apps, consumers, endpoints, metrics, request_details, request_logs, traces};
 
 pub fn run(db: &Path) -> Result<()> {
     let conn = open_db(db)?;
@@ -23,7 +23,7 @@ pub fn run(db: &Path) -> Result<()> {
     metrics::ensure_metrics_table(&conn)?;
     request_logs::ensure_request_logs_table(&conn)?;
     request_details::ensure_application_logs_table(&conn)?;
-    request_details::ensure_spans_table(&conn)?;
+    traces::ensure_spans_table(&conn)?;
 
     eprintln!("Database reset: {}", db.display());
     Ok(())

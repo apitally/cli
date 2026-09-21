@@ -1,6 +1,6 @@
 # DuckDB JSON Functions
 
-Functions for querying `request_body_json` and `response_body_json` columns (DuckDB `JSON` type).
+Functions for querying `request_body_json`/`response_body_json` columns in `request_logs` and `attributes`/`events` columns in `spans` (DuckDB `JSON` type).
 
 ## Extraction Operators
 
@@ -70,6 +70,15 @@ FROM request_logs
 WHERE app_id = 123
   AND timestamp >= '2025-01-01'
   AND status_code >= 400
+
+-- Extract native JSON span attributes (quote keys containing literal dots as a single JSONPath key)
+SELECT span_id,
+       attributes->>'$."db.system"' AS db_system,
+       (attributes->>'$."retry.count"')::BIGINT AS retry_count,
+       (attributes->>'$.cached')::BOOLEAN AS cached
+FROM spans
+WHERE app_id = 1
+  AND trace_id = '0123456789abcdef0123456789abcdef';
 ```
 
 ## Scalar Functions
@@ -126,4 +135,14 @@ WHERE r.app_id = 123
 GROUP BY r.request_uuid, r.method, r.path
 HAVING failed_items > 0
 ORDER BY failed_items DESC
+
+-- Expand span events
+SELECT s.span_id,
+       event.value->>'$.timestamp' AS event_timestamp_utc,
+       event.value->>'$.name' AS event_name,
+       event.value->>'$.attributes."exception.type"' AS exception_type
+FROM spans s, json_each(s.events) AS event
+WHERE s.app_id = 1
+  AND s.trace_id = '0123456789abcdef0123456789abcdef'
+  AND (event.value->>'$.name') = 'exception';
 ```

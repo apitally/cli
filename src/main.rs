@@ -7,6 +7,7 @@ mod request_details;
 mod request_logs;
 mod reset_db;
 mod sql;
+mod traces;
 mod utils;
 mod whoami;
 
@@ -220,11 +221,12 @@ enum Command {
         /// response_body_json, client_ip, client_country_iso_code, exception_type,
         /// exception_message, exception_stacktrace, sentry_event_id, trace_id.
         ///
-        /// Always included: timestamp, request_uuid, method, url.
+        /// Always included: timestamp, request_uuid, method, url, trace_id.
         ///
         /// Defaults to all fields except request_headers, request_body_json,
         /// response_headers, response_body_json, exception_type, exception_message,
-        /// exception_stacktrace, sentry_event_id, trace_id.
+        /// exception_stacktrace, sentry_event_id.
+        /// With --db, refetching replaces whole rows; omitted fields become null.
         #[arg(long)]
         fields: Option<String>,
 
@@ -244,7 +246,7 @@ enum Command {
         ///   [{"field":"status_code","op":"gte","value":400}]
         ///   [{"field":"path","op":"ilike","value":"/users/%"}]
         ///   [{"field":"request_headers","key":"content-type","op":"eq","value":"application/json"}]
-        ///   [{"field":"response_body","op":"ilike","value":"%error%"}]
+        ///   [{"field":"response_body_json","op":"ilike","value":"%error%"}]
         #[arg(long)]
         filters: Option<String>,
 
@@ -267,12 +269,159 @@ enum Command {
         db: Option<Option<PathBuf>>,
     },
 
+    /// Retrieve trace spans for an app
+    ///
+    /// Outputs newline-delimited JSON (one span per line), ordered by start time,
+    /// trace ID and span ID ascending. Filters select spans, not complete traces.
+    /// Sampling, limits and time bounds can leave traces incomplete. Matching
+    /// request logs need not exist. To expand a discovered trace, fetch its trace ID
+    /// without discovery filters, sampling or unnecessary time bounds.
+    ///
+    /// With --db, replaces matching rows in the shared `spans` table. Omitted
+    /// fields become null, including when request-details later writes a span.
+    /// Join request_logs by app_id and trace_id.
+    Traces {
+        #[command(flatten)]
+        api: ApiArgs,
+
+        /// App ID
+        app_id: i64,
+
+        /// Since datetime (ISO 8601 or relative duration, e.g. 24h, 7d)
+        ///
+        /// Inclusive span start-time bound. Required unless filters contain a
+        /// nonempty trace_id eq/in lookup. Omitted lookup bounds stay unbounded.
+        /// Datetimes without a timezone are UTC. Must precede --until if supplied.
+        /// The API validates this requirement (input errors exit with code 4).
+        #[arg(long)]
+        since: Option<String>,
+
+        /// Until datetime (ISO 8601 or relative duration, e.g. 24h, 7d)
+        ///
+        /// Exclusive span start-time bound. Defaults to now for discovery, but
+        /// remains unbounded for a trace_id eq/in lookup, even with --since.
+        #[arg(long)]
+        until: Option<String>,
+
+        /// JSON array or comma-separated list of field names to include
+        ///
+        /// Replaces defaults. Always included: trace_id, span_id, start_time_ns.
+        /// An empty JSON array selects only these required fields.
+        ///
+        /// Default fields:
+        ///   trace_id: 32-character hex ID
+        ///   span_id: 16-character hex ID
+        ///   parent_span_id: 16-character hex ID, or null for no parent
+        ///   env: environment name, or null
+        ///   name: span operation name
+        ///   kind: UNSPECIFIED, INTERNAL, SERVER, CLIENT, PRODUCER, CONSUMER
+        ///   status: UNSET, OK, ERROR
+        ///   start_time_ns: int64 Unix epoch nanoseconds
+        ///   end_time_ns: int64 Unix epoch nanoseconds
+        ///   duration_ns: int64 nanoseconds (1000000 ns = 1 ms)
+        ///
+        /// Opt-in fields:
+        ///   attributes: object mapping attribute names to JSON values
+        ///   events: array of {timestamp, name, attributes}; timestamps have nanosecond precision
+        ///   scope_name: instrumentation scope name, or null
+        ///   scope_version: instrumentation scope version, or null
+        ///
+        /// Selected empty attributes/events are {} and [], not null. Output IDs
+        /// are lowercase hex. Database event timestamps represent UTC.
+        #[arg(long, verbatim_doc_comment)]
+        fields: Option<String>,
+
+        /// JSON array of filter objects with "field", "op", and "value" keys
+        ///
+        /// Clauses are ANDed. All fields are filterable without selecting them.
+        /// Aliases: column/col for field, operator for op, val for value.
+        /// Field/operator names are trimmed and lowercased; enum values,
+        /// attribute keys and event names are case-sensitive. event_name is exact.
+        ///
+        /// Supported operators by field category:
+        ///   strings (env, name, scope_name, scope_version): eq, neq, in, not_in, like, not_like, ilike, not_ilike, contains, not_contains, is_null, is_not_null
+        ///   integers (start_time_ns, end_time_ns, duration_ns): eq, neq, gt, gte, lt, lte, in, not_in
+        ///   enums (kind, status): eq, neq, in, not_in
+        ///   IDs (trace_id, span_id, parent_span_id): eq, neq, in, not_in, is_null, is_not_null
+        ///   maps (attributes, events): eq, neq, gt, gte, lt, lte, in, not_in, like, not_like, ilike, not_ilike, contains, not_contains, exists, not_exists
+        ///
+        /// Null operators are not valid for name, trace_id or span_id. Trace IDs
+        /// require 32 hex characters; span/parent IDs require 16. Hex case is
+        /// normalized. Integer fields require JSON integers, not floats/strings.
+        /// Enum values must be uppercase values listed under --fields.
+        ///
+        /// in/not_in require arrays; other comparisons require scalars. Scalar-field
+        /// lists may be empty; JSON null is not a comparison value or list item. Omit
+        /// value for exists, not_exists, is_null and is_not_null. like/ilike use
+        /// SQL wildcards (% and _); contains/not_contains are case-insensitive
+        /// substrings. not_in on nullable scalar fields also matches null rows.
+        ///
+        /// attributes requires "key". events requires "key", "event_name", or
+        /// both; event_name alone permits only exists/not_exists. key is valid
+        /// only for attributes/events; event_name only for events.
+        ///
+        /// Attribute value types restrict map operators: strings support string
+        /// comparisons/patterns/membership (no null operators); numbers support
+        /// equality/ordering/membership; booleans only eq/neq/in/not_in. Lists
+        /// must be nonempty with one scalar type (integers and finite floats may
+        /// mix). Use existence checks for array/object/null attributes.
+        /// Comparisons require a present key
+        /// of the same JSON type; missing keys do not satisfy neq/not_in.
+        ///
+        /// Event clauses match any qualifying event; not_exists negates that
+        /// existence. Event neq/not_in means any matching negative comparison,
+        /// not that no event equals the value. Separate clauses may match
+        /// different events. All events of selected spans are returned.
+        ///
+        /// Examples:
+        ///   [{"field":"trace_id","op":"eq","value":"0123456789abcdef0123456789abcdef"}]
+        ///   [{"field":"env","op":"eq","value":"prod"},{"field":"duration_ns","op":"gte","value":100000000}]
+        ///   [{"field":"kind","op":"in","value":["CLIENT","INTERNAL"]}]
+        ///   [{"field":"status","op":"eq","value":"ERROR"}]
+        ///   [{"field":"parent_span_id","op":"is_null"}]
+        ///   [{"field":"name","op":"ilike","value":"%query%"}]
+        ///   [{"field":"scope_name","op":"is_not_null"}]
+        ///   [{"field":"attributes","key":"db.system","op":"eq","value":"postgresql"}]
+        ///   [{"field":"attributes","key":"retry.count","op":"gte","value":2}]
+        ///   [{"field":"attributes","key":"cached","op":"eq","value":true}]
+        ///   [{"field":"attributes","key":"db.statement","op":"exists"}]
+        ///   [{"field":"events","event_name":"exception","op":"exists"}]
+        ///   [{"field":"events","event_name":"exception","key":"exception.type","op":"eq","value":"TimeoutError"}]
+        ///   [{"field":"events","key":"code","op":"in","value":[500,503]}]
+        #[arg(long, verbatim_doc_comment)]
+        filters: Option<String>,
+
+        /// Approximate sample size (integer) or sample rate (float > 0 and <= 0.5)
+        ///
+        /// Integer counts (e.g. 1000) and float rates (e.g. 0.1) sample individual
+        /// spans, not whole traces. The limit still applies after sampling.
+        #[arg(long)]
+        sample: Option<String>,
+
+        /// Maximum number of spans to return (1 to 1000000; default 1000000)
+        ///
+        /// There is no pagination or continuation token.
+        #[arg(long)]
+        limit: Option<i64>,
+
+        /// Store results in DuckDB instead of outputting NDJSON
+        ///
+        /// Defaults to ~/.apitally/data.duckdb if no path is given. Both traces
+        /// and request-details replace matching (app_id, trace_id, span_id) rows
+        /// in spans, clearing omitted fields. Other rows remain. Legacy schemas
+        /// require explicit reset/refetch or a new file; reset-db clears ALL tables.
+        #[arg(long, num_args = 0..=1)]
+        db: Option<Option<PathBuf>>,
+    },
+
     /// Get details for a specific request
     ///
     /// Outputs a JSON object with full request details including headers, body,
     /// application logs, and spans.
-    /// With --db, upserts the request into the `request_logs` table and inserts
-    /// rows into the `application_logs` and `spans` tables.
+    /// With --db, upserts the request into `request_logs`, inserts application
+    /// logs, and replaces matching (app_id, trace_id, span_id) rows in `spans`.
+    /// Span fields absent from this response (env, events, scope_name and
+    /// scope_version) become null, including values fetched by traces earlier.
     RequestDetails {
         #[command(flatten)]
         api: ApiArgs,
@@ -454,6 +603,32 @@ fn run(cli: Cli) -> Result<()> {
                 std::io::stdout().lock(),
             )
         }
+        Command::Traces {
+            api,
+            app_id,
+            since,
+            until,
+            fields,
+            filters,
+            sample,
+            limit,
+            db,
+        } => {
+            let db = utils::resolve_db(db)?;
+            traces::run(
+                app_id,
+                since.as_deref(),
+                until.as_deref(),
+                fields.as_deref(),
+                filters.as_deref(),
+                sample.as_deref(),
+                limit,
+                db.as_deref(),
+                api.api_key.as_deref(),
+                api.api_base_url.as_deref(),
+                std::io::stdout().lock(),
+            )
+        }
         Command::RequestDetails {
             api,
             app_id,
@@ -516,6 +691,7 @@ mod tests {
         ); // missing --metrics
         assert!(Cli::try_parse_from(["apitally", "request-logs", "42"]).is_err()); // missing --since
         assert!(Cli::try_parse_from(["apitally", "request-details", "42"]).is_err()); // missing request_uuid
+        assert!(Cli::try_parse_from(["apitally", "traces"]).is_err()); // missing app_id
         assert!(Cli::try_parse_from(["apitally", "sql", "SELECT 1", "--db"]).is_err()); // missing db path
 
         // Valid subcommands should parse correctly
@@ -562,6 +738,27 @@ mod tests {
                 .unwrap()
                 .command,
             Command::RequestLogs { app_id: 42, .. }
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["apitally", "traces", "42", "--since", "24h"])
+                .unwrap()
+                .command,
+            Command::Traces {
+                app_id: 42,
+                since: Some(_),
+                ..
+            }
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["apitally", "traces", "42"])
+                .unwrap()
+                .command,
+            Command::Traces {
+                app_id: 42,
+                since: None,
+                until: None,
+                ..
+            }
         ));
         assert!(matches!(
             Cli::try_parse_from([

@@ -14,7 +14,9 @@ the 📚 [documentation](https://docs.apitally.io).
 
 ## Highlights
 
-- Retrieve API metrics and request logs, including headers, payloads, traces, and more
+- Retrieve API metrics and request logs, including headers and payloads
+- Discover trace spans by duration, status, attributes, and events
+- Drill into individual requests with application logs and associated spans
 - Load data into a local [DuckDB](https://github.com/duckdb/duckdb) database and analyze it with arbitrary SQL queries
 - Single Rust binary with bundled DuckDB, no runtime dependencies
 - Includes an [agent skill](skills/apitally-cli/), so agents know how to use the CLI effectively out of the box
@@ -81,12 +83,15 @@ You can also set the API key via the `APITALLY_API_KEY` environment variable or 
 | `metrics`         | Fetch aggregated metrics for an app             |
 | `request-logs`    | Fetch request log data for an app               |
 | `request-details` | Fetch full details for a specific request       |
+| `traces`          | Fetch trace spans for an app                    |
 | `sql`             | Run SQL queries against a local DuckDB database |
 | `reset-db`        | Drop and recreate all tables in local DuckDB    |
 
-All commands output NDJSON to stdout by default. Use the `--db` flag to write data to a local DuckDB database instead, which can then be queried with the `sql` command. The database defaults to `~/.apitally/data.duckdb` if no other path is specified.
+List results and SQL queries output NDJSON to stdout. Use the `--db` flag on data-fetching commands to write to a local DuckDB database instead, then query it with `sql`. The database defaults to `~/.apitally/data.duckdb` if no other path is specified.
 
-Run `npx @apitally/cli --help` for detailed usage information.
+`traces --db` and `request-details --db` share the `spans` table, keyed by app, trace, and span IDs. Refetching replaces complete matching rows, clearing omitted fields. Existing databases with the old request-based span schema require an explicit reset and refetch: `reset-db` clears **all tables**. Use a new database file instead to preserve the old data; data beyond API retention may not be available to refetch.
+
+For detailed usage, run `npx @apitally/cli <command> --help`.
 
 For a full command reference, see [skills/apitally-cli/references/commands.md](skills/apitally-cli/references/commands.md).
 

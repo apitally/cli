@@ -1,6 +1,6 @@
 # Command Reference
 
-All commands accept an `--api-key <key>` flag for authentication (except `sql`). API key resolution order: `--api-key` flag > `APITALLY_API_KEY` env var > `~/.apitally/auth.json`.
+All commands except `sql` and `reset-db` accept `--api-key <key>` for authentication. API key resolution order: `--api-key` flag > `APITALLY_API_KEY` env var > `~/.apitally/auth.json`.
 
 Commands that accept a `--db` flag use `~/.apitally/data.duckdb` as the default database path if no other path is specified. If the database file doesn't exist, it will be created (except for the `sql` command). When writing to tables, existing records are updated (no duplicates are created).
 
@@ -175,6 +175,7 @@ Timestamps without timezone are treated as UTC. Results are ordered by timestamp
 | ------------------------- | -------------------------------- | ------- |
 | `timestamp`               | string (datetime)                | yes     |
 | `request_uuid`            | string (ID)                      | yes     |
+| `trace_id`                | string (ID)                      | yes     |
 | `env`                     | string                           | yes     |
 | `method`                  | string                           | yes     |
 | `path`                    | string                           | yes     |
@@ -194,9 +195,8 @@ Timestamps without timezone are treated as UTC. Results are ordered by timestamp
 | `exception_message`       | string                           | no      |
 | `exception_stacktrace`    | string                           | no      |
 | `sentry_event_id`         | string (ID)                      | no      |
-| `trace_id`                | string (ID)                      | no      |
 
-Default fields are included when `--fields` is omitted. When `--fields` is provided, it replaces the default set and only the specified fields are returned. `timestamp`, `request_uuid`, `method`, and `url` are always included regardless.
+Default fields are included when `--fields` is omitted. Providing `--fields` replaces the defaults, but `timestamp`, `request_uuid`, `trace_id`, `method`, and `url` are always included. With `--db`, refetching replaces complete matching rows and sets omitted columns to `NULL`.
 
 ### Filters
 
@@ -256,11 +256,124 @@ Get full details for a specific request identified by its UUID, including header
 
 - `--db`: Write to `request_logs`, `application_logs`, and `spans` tables in DuckDB instead of outputting JSON to stdout
 
+Correlate spans to requests on both `app_id` and `trace_id`. Multiple requests can share a trace and each trace can have many spans, so joins can multiply counts. See [relationships](duckdb_tables.md#relationships).
+
+To store full details for a request found in request logs (substitute its app ID and UUID):
+
+```bash
+npx @apitally/cli request-details 1 2fbc1df6-3124-4ed1-a376-7d2c64e4d5cf \
+  --db ./trace-investigation.duckdb
+```
+
 Example JSON output (without `--db`):
 
 <!-- prettier-ignore -->
 ```json
-{"timestamp":"2026-01-01T00:15:00.000Z","request_uuid":"2fbc1df6-3124-4ed1-a376-7d2c64e4d5cf","env":"prod","method":"GET","path":"/test/1","url":"https://api.example.com/test/1","consumer_id":1,"request_headers":[["content-type","application/json"]],"request_size_bytes":0,"request_body_json":null,"status_code":200,"response_time_ms":122,"response_headers":[["x-request-id","abc"]],"response_size_bytes":66,"response_body_json":"{\"ok\":true}","client_ip":"203.0.113.10","client_country_iso_code":"DE","trace_id":"0000000000000000aaaaaaaaaaaaaaaa","exception":null,"logs":[{"timestamp":"2026-01-01T00:15:00.100Z","message":"handling request","level":"INFO","logger":"app","file":"main.py","line":42}],"spans":[{"span_id":"00000000000000aa","parent_span_id":null,"name":"GET /test/1","kind":"SERVER","start_time_ns":1735689600000000000,"end_time_ns":1735689600050000000,"duration_ns":50000000,"status":"OK","attributes":{"http.method":"GET"}}]}
+{"timestamp":"2026-01-01T00:15:00.000Z","request_uuid":"2fbc1df6-3124-4ed1-a376-7d2c64e4d5cf","env":"prod","method":"GET","path":"/test/1","url":"https://api.example.com/test/1","consumer_id":1,"request_headers":[["content-type","application/json"]],"request_size_bytes":0,"request_body_json":null,"status_code":200,"response_time_ms":122,"response_headers":[["x-request-id","abc"]],"response_size_bytes":66,"response_body_json":"{\"ok\":true}","client_ip":"203.0.113.10","client_country_iso_code":"DE","trace_id":"0123456789abcdef0123456789abcdef","exception":null,"logs":[{"timestamp":"2026-01-01T00:15:00.100Z","message":"handling request","level":"INFO","logger":"app","file":"main.py","line":42}],"spans":[{"span_id":"0123456789abcdef","parent_span_id":null,"name":"GET /test/1","kind":"SERVER","start_time_ns":1767226500000000000,"end_time_ns":1767226500050000000,"duration_ns":50000000,"status":"OK","attributes":{"http.method":"GET"}}]}
+```
+
+## `traces`
+
+```
+npx @apitally/cli traces <app-id> [--since <datetime>] \
+  [--until <datetime>] [--fields <json>] [--filters <json>] \
+  [--sample <n|rate>] [--limit <n>] [--db [<path>]]
+```
+
+Fetch trace spans for an app. Outputs NDJSON to stdout by default, with one span per row.
+
+- `--since`: Span start time, inclusive (ISO 8601 or relative duration); required unless a nonempty `trace_id` filter uses `eq` or `in`
+- `--until`: Span start time, exclusive; defaults to now
+- `--fields`: Comma-separated list or JSON array of field names to include
+- `--filters`: JSON array of filter objects
+- `--sample`: Approximate sample size (positive integer, e.g. `1000`) or sample rate (float > 0 and <= 0.5, e.g. `0.1`)
+- `--limit`: Maximum number of spans, from 1 to 1,000,000 (default: 1,000,000)
+- `--db`: Write to `spans` table in DuckDB instead of outputting NDJSON to stdout
+
+Timestamps without timezone are treated as UTC. Results are ordered by start time.
+
+Filters and sampling select individual spans, not whole traces. To fetch related spans, query their trace IDs without other filters, sampling, or time bounds; the limit still applies.
+
+### Fields
+
+| Field            | Type             | Default | Notes                                                                 |
+| ---------------- | ---------------- | ------- | --------------------------------------------------------------------- |
+| `trace_id`       | string (ID)      | yes     | 32-character lowercase hex                                            |
+| `span_id`        | string (ID)      | yes     | 16-character lowercase hex                                            |
+| `parent_span_id` | string (ID)      | yes     | 16-character lowercase hex; null for no parent                        |
+| `env`            | string           | yes     | Environment name                                                      |
+| `name`           | string           | yes     | Span operation name                                                   |
+| `kind`           | enum string      | yes     | `UNSPECIFIED`, `INTERNAL`, `SERVER`, `CLIENT`, `PRODUCER`, `CONSUMER` |
+| `status`         | enum string      | yes     | `UNSET`, `OK`, `ERROR`                                                |
+| `start_time_ns`  | int64            | yes     | Unix epoch nanoseconds                                                |
+| `end_time_ns`    | int64            | yes     | Unix epoch nanoseconds                                                |
+| `duration_ns`    | int64            | yes     | Nanoseconds                                                           |
+| `attributes`     | object           | no      | Attribute names mapped to JSON values                                 |
+| `events`         | array of objects | no      | Each event object has `timestamp`, `name`, and `attributes` keys      |
+| `scope_name`     | string           | no      | Instrumentation scope                                                 |
+| `scope_version`  | string           | no      | Instrumentation scope version                                         |
+
+Default fields are included when `--fields` is omitted. Providing `--fields` replaces the defaults, but `trace_id`, `span_id`, and `start_time_ns` are always included.
+
+Event timestamps are ISO 8601 UTC strings with nanosecond precision. See [JSON extraction examples](duckdb_json_functions.md#examples) for querying attributes and events.
+
+### Filters
+
+Pass `--filters` as a JSON array of filter objects. Multiple filters are combined with AND.
+
+Filter object keys:
+
+- `field`: field name to filter on
+- `op`: comparison operator
+- `value`: comparison value (omit for existence/null checks)
+- `key`: case-sensitive attribute name, required for `attributes` and optional for `events`
+- `event_name`: exact, case-sensitive event name, only for `events`
+
+#### Operators by field type
+
+All fields can be used in filters, even if not selected for output. Available operators depend on the field type:
+
+- **string**: `eq`, `neq`, `in`, `not_in`, `like`, `not_like`, `ilike`, `not_ilike`, `contains`, `not_contains`; nullable fields also support `is_null`, `is_not_null`
+- **int64**: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`
+- **enum string**: `eq`, `neq`, `in`, `not_in`
+- **string (ID)**: `eq`, `neq`, `in`, `not_in`; `parent_span_id` also supports `is_null`, `is_not_null`
+- **attributes / events**: operators depend on the attribute value type (see below)
+
+#### Value rules
+
+- Values must match the field type. IDs accept either hex case and are normalized to lowercase; enums use the uppercase values in the field table.
+- `in`/`not_in`: value must be a JSON array; other comparisons take scalars. JSON null is not allowed as a value or array item.
+- `exists`/`not_exists`/`is_null`/`is_not_null`: omit value entirely
+- `like`/`ilike`/`not_like`/`not_ilike`: use `%` and `_` as wildcards; `ilike` variants are case-insensitive
+- `contains`/`not_contains`: case-insensitive substring match (no wildcards needed)
+- `not_in` can match null fields, unlike SQL `NOT IN`
+
+#### Attribute and event rules
+
+- `exists`/`not_exists` check for an attribute or event. Event filters require `key`, `event_name`, or both; without `key`, only existence checks are supported.
+- String attributes support the string operators above except null checks. Numeric attributes support the int64 operators, with integer or float values. Boolean attributes support `eq`, `neq`, `in`, `not_in`.
+- Attribute membership arrays must be nonempty and contain one scalar type (integers and floats may be mixed). Use existence checks for array or object attributes.
+- Comparisons require a matching JSON type and an existing key, including for `neq` and `not_in`.
+- Each event filter matches any event satisfying its conditions; `not_exists` negates that match. Separate filters may match different events. Output includes all events of matching spans.
+
+#### Filter examples
+
+```json
+[{"field":"trace_id","op":"eq","value":"0123456789abcdef0123456789abcdef"}]
+[{"field":"env","op":"eq","value":"prod"},{"field":"duration_ns","op":"gte","value":100000000}]
+[{"field":"kind","op":"in","value":["CLIENT","INTERNAL"]}]
+[{"field":"parent_span_id","op":"is_null"}]
+[{"field":"name","op":"ilike","value":"%query%"}]
+[{"field":"attributes","key":"db.system","op":"eq","value":"postgresql"}]
+[{"field":"attributes","key":"db.statement","op":"exists"}]
+[{"field":"events","event_name":"exception","op":"exists"}]
+[{"field":"events","event_name":"exception","key":"exception.type","op":"eq","value":"TimeoutError"}]
+```
+
+Example NDJSON output (without `--db`):
+
+```json
+{"trace_id":"0123456789abcdef0123456789abcdef","span_id":"0123456789abcdef","start_time_ns":1767225600000000000,"parent_span_id":null,"env":"prod","name":"GET /users","kind":"SERVER","status":"OK","end_time_ns":1767225600250000000,"duration_ns":250000000}
 ```
 
 ## `sql`
@@ -277,7 +390,7 @@ Run a SQL query against a local DuckDB database. The query can be passed as an a
 
 Available tables: `apps`, `app_envs`, `consumers`, `endpoints`, `metrics`, `request_logs`, `application_logs`, `spans`. See [duckdb_tables.md](duckdb_tables.md) for schemas.
 
-**Important:** The database may contain data from previous sessions. Always filter queries by `app_id`, time (`timestamp` for `request_logs`, `period_start`/`period_end` for `metrics`), and other relevant fields to avoid including unrelated data.
+**Important:** The database may contain data from previous sessions. Always filter queries by `app_id` and the current investigation scope: `timestamp` for request logs, `period_start`/`period_end` for metrics, and exact `trace_id` values or integer `start_time_ns` bounds for spans.
 
 DuckDB uses a [PostgreSQL-compatible SQL dialect](https://duckdb.org/docs/stable/sql/dialect/overview). The bundled DuckDB has no ICU extension, so `TIMESTAMPTZ` columns cannot be cast directly to `DATE`. Use `(timestamp AT TIME ZONE 'UTC')::DATE` or `date_trunc('day', timestamp AT TIME ZONE 'UTC')` for date conversion and grouping.
 

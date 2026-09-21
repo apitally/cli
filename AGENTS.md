@@ -2,7 +2,7 @@
 
 ## Product Overview
 
-[Apitally](https://apitally.io) is an API monitoring and analytics tool. This is a CLI tool for AI agents and humans. It retrieves data from the Apitally API and outputs it in NDJSON format, or optionally stores it in a local DuckDB database and allows running arbitrary SQL queries against it.
+[Apitally](https://apitally.io) is an API monitoring and analytics tool. This is a CLI tool for AI agents and humans. It retrieves data from the Apitally API and optionally stores it in a local DuckDB database for arbitrary SQL queries. List results and SQL use NDJSON; request-details and whoami return one JSON object. Setup/reset status messages go to stderr.
 
 ## Repository Structure
 
@@ -17,6 +17,7 @@ src/
   metrics.rs            Metrics command (Arrow IPC or NDJSON streaming)
   request_logs.rs       Request logs command (Arrow IPC or NDJSON streaming)
   request_details.rs    Request details command (single request fetch, DB write)
+  traces.rs             Traces command (Arrow IPC or NDJSON streaming)
   sql.rs                SQL command (query DuckDB, output NDJSON)
   utils.rs              Shared helpers (open DuckDB connection, check HTTP response)
 npm/
@@ -49,6 +50,7 @@ skills/
 | `endpoints`       | `GET /v1/apps/{app_id}/endpoints`                   |
 | `metrics`         | `POST /v1/apps/{app_id}/metrics`                    |
 | `request-logs`    | `POST /v1/apps/{app_id}/request-logs`               |
+| `traces`          | `POST /v1/apps/{app_id}/traces`                     |
 | `request-details` | `GET /v1/apps/{app_id}/request-logs/{request_uuid}` |
 | `sql`             | Local DuckDB                                        |
 

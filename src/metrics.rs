@@ -109,7 +109,6 @@ pub fn run(
              SELECT {app_id}, {col_list} FROM arrow(?, ?)"
         );
 
-        const CHUNK_SIZE: usize = 2048; // DuckDB's vector size
         let mut total = 0usize;
 
         eprint!(
@@ -120,11 +119,8 @@ pub fn run(
         for batch in reader {
             let batch = batch?;
             total += batch.num_rows();
-            for offset in (0..batch.num_rows()).step_by(CHUNK_SIZE) {
-                let chunk = batch.slice(offset, (batch.num_rows() - offset).min(CHUNK_SIZE));
-                let params = arrow_recordbatch_to_query_params(chunk);
-                conn.execute(&insert_sql, params)?;
-            }
+            let params = arrow_recordbatch_to_query_params(batch);
+            conn.execute(&insert_sql, params)?;
             eprint!(
                 "\r{total} metrics rows written to table 'metrics' in {}...",
                 db_path.display()
@@ -168,6 +164,7 @@ mod tests {
     }
 
     fn sample_metrics_arrow_ipc() -> Vec<u8> {
+        const ROW_COUNT: usize = 2049;
         let schema = Arc::new(Schema::new(vec![
             Field::new(
                 "period_start",
@@ -187,16 +184,20 @@ mod tests {
             schema.clone(),
             vec![
                 Arc::new(
-                    TimestampMillisecondArray::from(vec![1_735_689_600_000i64])
-                        .with_timezone("UTC"),
+                    TimestampMillisecondArray::from_iter_values(
+                        (0..ROW_COUNT).map(|i| 1_735_689_600_000 + i as i64 * 3_600_000),
+                    )
+                    .with_timezone("UTC"),
                 ),
                 Arc::new(
-                    TimestampMillisecondArray::from(vec![1_735_693_200_000i64])
-                        .with_timezone("UTC"),
+                    TimestampMillisecondArray::from_iter_values(
+                        (0..ROW_COUNT).map(|i| 1_735_693_200_000 + i as i64 * 3_600_000),
+                    )
+                    .with_timezone("UTC"),
                 ),
-                Arc::new(StringArray::from(vec![Some("GET")])),
-                Arc::new(Int64Array::from(vec![100])),
-                Arc::new(Float64Array::from(vec![0.05])),
+                Arc::new(StringArray::from(vec![Some("GET"); ROW_COUNT])),
+                Arc::new(Int64Array::from(vec![100; ROW_COUNT])),
+                Arc::new(Float64Array::from(vec![0.05; ROW_COUNT])),
             ],
         )
         .unwrap();
@@ -276,20 +277,16 @@ mod tests {
 
         let conn = open_db(&db_path).unwrap();
 
-        let count: i64 = conn
-            .query_row("SELECT count(*) FROM metrics", [], |row| row.get(0))
-            .unwrap();
-        assert_eq!(count, 1);
-
-        let (method, requests, error_rate): (String, i64, f64) = conn
+        let (count, periods, matching): (i64, i64, i64) = conn
             .query_row(
-                "SELECT method, requests, error_rate FROM metrics WHERE app_id = 1",
+                "SELECT count(*), count(DISTINCT period_start), count(*) FILTER (
+                    WHERE app_id = 1 AND method = 'GET' AND requests = 100 AND error_rate = 0.05
+                    AND epoch_ms(period_end) - epoch_ms(period_start) = 3600000
+                 ) FROM metrics",
                 [],
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .unwrap();
-        assert_eq!(method, "GET");
-        assert_eq!(requests, 100);
-        assert!((error_rate - 0.05).abs() < f64::EPSILON);
+        assert_eq!((count, periods, matching), (2049, 2049, 2049));
     }
 }

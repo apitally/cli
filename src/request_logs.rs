@@ -14,6 +14,7 @@ pub(crate) fn ensure_request_logs_table(conn: &duckdb::Connection) -> Result<()>
             app_id INTEGER NOT NULL,
             timestamp TIMESTAMPTZ NOT NULL,
             request_uuid VARCHAR NOT NULL,
+            trace_id VARCHAR,
             env VARCHAR,
             method VARCHAR NOT NULL,
             path VARCHAR,
@@ -33,7 +34,6 @@ pub(crate) fn ensure_request_logs_table(conn: &duckdb::Connection) -> Result<()>
             exception_message VARCHAR,
             exception_stacktrace VARCHAR,
             sentry_event_id VARCHAR,
-            trace_id VARCHAR,
             UNIQUE (app_id, request_uuid)
         )",
     )?;
@@ -127,7 +127,6 @@ pub fn run(
              SELECT {app_id}, {col_list} FROM arrow(?, ?)"
         );
 
-        const CHUNK_SIZE: usize = 2048; // DuckDB's vector size
         let mut total = 0usize;
 
         eprint!(
@@ -138,11 +137,8 @@ pub fn run(
         for batch in reader {
             let batch = batch?;
             total += batch.num_rows();
-            for offset in (0..batch.num_rows()).step_by(CHUNK_SIZE) {
-                let chunk = batch.slice(offset, (batch.num_rows() - offset).min(CHUNK_SIZE));
-                let params = arrow_recordbatch_to_query_params(chunk);
-                conn.execute(&insert_sql, params)?;
-            }
+            let params = arrow_recordbatch_to_query_params(batch);
+            conn.execute(&insert_sql, params)?;
             eprint!(
                 "\r{total} request logs written to table 'request_logs' in {}...",
                 db_path.display()
@@ -180,11 +176,12 @@ mod tests {
     use crate::utils::test_utils::{parse_ndjson, temp_db};
 
     fn sample_request_logs_ndjson() -> &'static str {
-        "{\"timestamp\":\"2025-01-01T00:00:00Z\",\"request_uuid\":\"abc\",\"method\":\"GET\",\"url\":\"https://api.example.com/test\",\"status_code\":200}\n\
-         {\"timestamp\":\"2025-01-01T00:01:00Z\",\"request_uuid\":\"def\",\"method\":\"POST\",\"url\":\"https://api.example.com/test2\",\"status_code\":201}\n"
+        "{\"timestamp\":\"2025-01-01T00:00:00Z\",\"request_uuid\":\"abc\",\"method\":\"GET\",\"url\":\"https://api.example.com/test\",\"status_code\":200,\"trace_id\":\"0123456789abcdef0123456789abcdef\"}\n\
+         {\"timestamp\":\"2025-01-01T00:01:00Z\",\"request_uuid\":\"def\",\"method\":\"POST\",\"url\":\"https://api.example.com/test2\",\"status_code\":201,\"trace_id\":null}\n"
     }
 
     fn sample_request_logs_arrow_ipc() -> Vec<u8> {
+        const ROW_COUNT: usize = 2049;
         let header_fields = Fields::from(vec![
             Field::new("1", DataType::Utf8, false),
             Field::new("2", DataType::Utf8, false),
@@ -201,21 +198,24 @@ mod tests {
             Field::new("request_uuid", DataType::Utf8, false),
             Field::new("method", DataType::Utf8, false),
             Field::new("url", DataType::Utf8, false),
+            Field::new("trace_id", DataType::Utf8, true),
             Field::new("request_headers", headers_list_type.clone(), true),
         ]));
         let headers_struct = StructArray::from(vec![
             (
                 Arc::new(Field::new("1", DataType::Utf8, false)),
-                Arc::new(StringArray::from(vec!["content-type"])) as _,
+                Arc::new(StringArray::from(vec!["x-request-id"; ROW_COUNT])) as _,
             ),
             (
                 Arc::new(Field::new("2", DataType::Utf8, false)),
-                Arc::new(StringArray::from(vec!["application/json"])) as _,
+                Arc::new(StringArray::from_iter_values(
+                    (0..ROW_COUNT).map(|i| format!("abc-{i}")),
+                )) as _,
             ),
         ]);
         let headers_list = ListArray::new(
             Arc::new(Field::new_list_field(DataType::Struct(header_fields), true)),
-            duckdb::arrow::buffer::OffsetBuffer::from_lengths([1]),
+            duckdb::arrow::buffer::OffsetBuffer::from_lengths(std::iter::repeat_n(1, ROW_COUNT)),
             Arc::new(headers_struct),
             None,
         );
@@ -223,12 +223,21 @@ mod tests {
             schema.clone(),
             vec![
                 Arc::new(
-                    TimestampMillisecondArray::from(vec![1_735_689_600_000i64])
+                    TimestampMillisecondArray::from(vec![1_735_689_600_000i64; ROW_COUNT])
                         .with_timezone("UTC"),
                 ),
-                Arc::new(StringArray::from(vec!["abc-123"])),
-                Arc::new(StringArray::from(vec!["GET"])),
-                Arc::new(StringArray::from(vec!["https://api.example.com/test"])),
+                Arc::new(StringArray::from_iter_values(
+                    (0..ROW_COUNT).map(|i| format!("abc-{i}")),
+                )),
+                Arc::new(StringArray::from(vec!["GET"; ROW_COUNT])),
+                Arc::new(StringArray::from(vec![
+                    "https://api.example.com/test";
+                    ROW_COUNT
+                ])),
+                Arc::new(StringArray::from(vec![
+                    "0123456789abcdef0123456789abcdef";
+                    ROW_COUNT
+                ])),
                 Arc::new(headers_list),
             ],
         )
@@ -281,6 +290,8 @@ mod tests {
         assert_eq!(rows[0]["status_code"], 200);
         assert_eq!(rows[1]["method"], "POST");
         assert_eq!(rows[1]["url"], "https://api.example.com/test2");
+        assert_eq!(rows[0]["trace_id"], "0123456789abcdef0123456789abcdef");
+        assert!(rows[1]["trace_id"].is_null());
     }
 
     #[test]
@@ -338,19 +349,18 @@ mod tests {
 
         let conn = open_db(&db_path).unwrap();
 
-        let count: i64 = conn
-            .query_row("SELECT count(*) FROM request_logs", [], |row| row.get(0))
-            .unwrap();
-        assert_eq!(count, 1);
-
-        let (url, header_name): (String, Option<String>) = conn
+        let (count, matching): (i64, i64) = conn
             .query_row(
-                "SELECT url, request_headers[1].name FROM request_logs WHERE app_id = 1",
+                "SELECT count(*), count(*) FILTER (
+                    WHERE app_id = 1 AND url = 'https://api.example.com/test'
+                    AND request_headers[1].name = 'x-request-id'
+                    AND request_headers[1].value = request_uuid
+                    AND trace_id = '0123456789abcdef0123456789abcdef'
+                 ) FROM request_logs",
                 [],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .unwrap();
-        assert_eq!(url, "https://api.example.com/test");
-        assert_eq!(header_name.as_deref(), Some("content-type"));
+        assert_eq!((count, matching), (2049, 2049));
     }
 }

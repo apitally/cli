@@ -1,19 +1,20 @@
 ---
 name: apitally-cli
 description: >
-  Retrieve and investigate API metrics and request log data from Apitally. Fetches
-  aggregated metrics, request logs, consumers, and app metadata via the Apitally CLI,
+  Retrieve and investigate API metrics, request logs, and traces from Apitally.
+  Fetches aggregated metrics, request logs, traces, consumers, and app metadata via the CLI,
   stores data in a local DuckDB database, and runs SQL queries to investigate issues
   or answer questions. Use when the user mentions Apitally, the Apitally CLI, API
-  metrics, API request logs, or API consumers.
+  metrics, request logs, traces, or API consumers.
 ---
 
 # Apitally CLI
 
-The Apitally CLI retrieves API metrics and request log data from [Apitally](https://apitally.io) and optionally stores it in a local DuckDB database for investigation with SQL. Two main data sources:
+The Apitally CLI retrieves data from [Apitally](https://apitally.io) and optionally stores it in a local DuckDB database for investigation with SQL. Three main data sources:
 
 - **Metrics** — pre-aggregated data (request counts, error rates, response time percentiles, throughput). Retention: **30 days** at 1-minute intervals, **13 months** at 30-minute intervals.
-- **Request logs** — individual API requests with method, URL, status code, response time, consumer, headers, payloads, exceptions, traces, and more. Retention: **15 days**.
+- **Request logs** - individual API requests with method, URL, status code, response time, consumer, headers, payloads, exceptions, and trace IDs. Retention: **15 days**.
+- **Traces** - individual operations such as database queries and external calls, with duration, status, attributes, and events. Availability depends on ingestion, configuration, and span retention.
 
 Run commands with `npx` (no install needed):
 
@@ -23,7 +24,7 @@ npx @apitally/cli <command> [--api-key <key>]
 
 A team-scoped API key is required to use the CLI. The `auth` command saves an API key to `~/.apitally/auth.json`, which is then used by all subsequent commands unless overridden by the `--api-key` flag. If any command exits with code 3 (auth error), ask the user to run `npx @apitally/cli auth` to authenticate, then continue.
 
-All commands output NDJSON to stdout by default. With `--db`, data is written to a DuckDB database instead (`~/.apitally/data.duckdb` by default), enabling SQL queries via the `sql` command.
+List results and SQL queries output NDJSON to stdout by default. With `--db`, fetching commands write to DuckDB instead (`~/.apitally/data.duckdb` by default), enabling queries via `sql`.
 
 ## Key Concepts
 
@@ -31,7 +32,7 @@ All commands output NDJSON to stdout by default. With `--db`, data is written to
 - **Consumer** — An API client or user tracked by Apitally. `consumer_id` is a numeric internal ID (surrogate key, used in request log filters and JOINs). `identifier` is a string set by the application (e.g. email, username) to uniquely identify the consumer. `name` is a display name (auto-generated from `identifier` if not explicitly set). `group` is an optional group name.
 - **Path vs URL** — `path` is the parameterized route template (e.g. `/users/{user_id}`), good for grouping by endpoint. `url` is the full request URL with actual values and query parameters (e.g. `https://api.example.com/users/123?limit=10`).
 - **Application logs** — Server-side log entries emitted by application code during request handling. Only available via `request-details` as the `logs` field.
-- **Spans** — OpenTelemetry trace spans representing units of work during request handling (e.g. database queries, external API calls, instrumented function calls). Only available via `request-details`. Form a tree via `parent_span_id`.
+- **Traces and spans** - Spans are OpenTelemetry units of work retrieved through `traces` or `request-details`. Identity is `(app_id, trace_id, span_id)`; parent links use `parent_span_id` within the same app and trace. Spans can exist without request logs. Multiple requests can share a trace.
 
 ## Command Quick Reference
 
@@ -44,6 +45,7 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
 - `endpoints <app-id> [--method <methods>] [--path <pattern>] [--db [<path>]]` -- list endpoints for an app
 - `metrics <app-id> --since <dt> [--until <dt>] --metrics <json> [--interval <interval>] [--group-by <json>] [--filters <json>] [--timezone <tz>] [--db [<path>]]` -- fetch aggregated metrics
 - `request-logs <app-id> --since <dt> [--until <dt>] [--fields <json>] [--filters <json>] [--sample <n|rate>] [--limit <n>] [--db [<path>]]` -- fetch request logs (max 1,000,000 rows at once)
+- `traces <app-id> [--since <dt>] [--until <dt>] [--fields <json>] [--filters <json>] [--sample <n|rate>] [--limit <n>] [--db [<path>]]` -- fetch individual spans; `--since` is required unless a `trace_id` filter is applied
 - `request-details <app-id> <request-uuid> [--db [<path>]]` -- fetch full details for a single request (including headers, payloads, exception info, application logs, and spans)
 - `sql "<query>" [--db <path>]` -- run SQL against local DuckDB
 - `reset-db [--db <path>]` -- drop and recreate all tables in local DuckDB
@@ -80,7 +82,7 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
        --group-by '["method","path"]' --interval day --db
      ```
 
-   - **Request logs** — for questions that require individual request data: specific errors, exceptions, headers, payloads, traces, etc. Narrow down fields and use filters to avoid fetching unnecessarily large volumes of data. Refetching replaces existing records in DuckDB (no duplicates).
+   - **Request logs** - for individual requests: errors, exceptions, headers, payloads, or requests to correlate with traces. Narrow fields and filters to avoid unnecessary volume. Refetching replaces whole records in DuckDB, clearing omitted fields; select every field still needed.
 
      ```
      npx @apitally/cli request-logs <app-id> --since "<since>" \
@@ -92,9 +94,11 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
      Filter by endpoint: `--filters '[{"field":"method","op":"eq","value":"GET"},{"field":"path","op":"eq","value":"/v1/users/{user_id}"}]'`
      Filter by consumer: `--filters '[{"field":"consumer_id","op":"in","value":[1,2,3]}]'`
 
-   - **Both** — for broad investigations, start with metrics for an overview, then fetch request logs to drill into specifics.
+   - **Trace spans** - for slow database or external calls, instrumentation scopes, span errors, or events. Use `traces` to discover matching spans, then fetch discovered trace IDs without the discovery filters or sampling to inspect sibling spans. See the trace patterns below and the [full field/filter contract](references/commands.md#traces).
 
-5. **Query DuckDB** using the `sql` command — **CRITICAL: The DuckDB database is persistent and retains data from previous fetches, including other sessions. You MUST filter your SQL queries to match the scope of your current investigation.** Always include `WHERE` conditions on `app_id`, `period_start`/`timestamp`, and any other relevant fields. Without these filters, results will include unrelated data and will be **wrong**.
+   - **Combine sources** - start broad investigations with metrics, then drill into request logs or spans. Use `request-details` for the full single-request view, including application logs.
+
+5. **Query DuckDB** using `sql` - the database persists across fetches and sessions. Filter every query by `app_id` and the investigation scope: `period_start` for metrics, `timestamp` for request logs, and exact `trace_id` values or integer `start_time_ns` bounds for spans. Include relevant environment/endpoint filters. Otherwise, unrelated stored rows can change the answer.
 
    ```
    npx @apitally/cli sql "SELECT method, path, status_code, COUNT(*) as n FROM request_logs WHERE app_id = <app-id> AND timestamp >= '<since>' AND status_code >= 400 GROUP BY ALL ORDER BY n DESC"
@@ -140,6 +144,50 @@ Use `request-details` to fetch full details (headers, body, exception, applicati
 ```
 npx @apitally/cli request-details <app-id> <request-uuid>
 ```
+
+### Discover slow spans and expand a trace
+
+The examples below use app `1` and a sample trace ID; substitute IDs from your results. Discover spans taking at least 100 ms. SQL time bounds use epoch nanoseconds because the bundled DuckDB does not support `TIMESTAMPTZ - INTERVAL` (24 hours = 86400000000000 ns):
+
+```bash
+npx @apitally/cli traces 1 --since 24h \
+  --filters '[{"field":"duration_ns","op":"gte","value":100000000}]' --db
+npx @apitally/cli sql "SELECT trace_id, span_id, name, duration_ns / 1000000.0 AS duration_ms FROM spans WHERE app_id = 1 AND start_time_ns >= epoch_ns(current_timestamp) - 86400000000000 AND duration_ns >= 100000000 ORDER BY duration_ns DESC LIMIT 20"
+```
+
+Fetch all available spans for a discovered trace ID. Keep only the trace-ID filter, remove sampling and time bounds, and select the fields needed for the investigation. `--fields` replaces defaults, so this example lists all fields:
+
+```bash
+npx @apitally/cli traces 1 \
+  --filters '[{"field":"trace_id","op":"in","value":["0123456789abcdef0123456789abcdef"]}]' \
+  --fields 'trace_id,span_id,parent_span_id,env,name,kind,status,start_time_ns,end_time_ns,duration_ns,attributes,events,scope_name,scope_version' --db
+npx @apitally/cli sql "SELECT span_id, parent_span_id, name, kind, status, duration_ns / 1000000.0 AS duration_ms FROM spans WHERE app_id = 1 AND trace_id = '0123456789abcdef0123456789abcdef' ORDER BY start_time_ns, span_id"
+```
+
+Filters select spans, not whole traces. Samples, limits, and time bounds can omit siblings; do not use partial sets as complete-trace statistics. See [JSON examples](references/duckdb_json_functions.md) for querying attributes and events.
+
+### Correlate request logs with spans
+
+Find request trace IDs, then expand them using the trace-ID fetch above:
+
+```bash
+npx @apitally/cli request-logs 1 --since 24h \
+  --fields 'status_code,response_time_ms' --db
+npx @apitally/cli sql "SELECT request_uuid, trace_id, status_code, response_time_ms FROM request_logs WHERE app_id = 1 AND epoch_ns(timestamp) >= epoch_ns(current_timestamp) - 86400000000000 AND trace_id IS NOT NULL ORDER BY response_time_ms DESC LIMIT 20"
+```
+
+Join on **both app and trace IDs**, not request UUID:
+
+```sql
+SELECT r.request_uuid, s.span_id, s.name, s.duration_ns / 1000000.0 AS duration_ms
+FROM request_logs r
+JOIN spans s ON s.app_id = r.app_id AND s.trace_id = r.trace_id
+WHERE r.app_id = 1
+  AND r.trace_id = '0123456789abcdef0123456789abcdef'
+ORDER BY r.request_uuid, s.start_time_ns, s.span_id;
+```
+
+This can return many rows per request, and multiple requests can share a trace. Use `EXISTS` or deduplication for request counts.
 
 ### Trace a consumer's activity
 
@@ -203,6 +251,10 @@ SELECT date_trunc('day', timestamp AT TIME ZONE 'UTC') AS day, count(*) AS n
 FROM request_logs WHERE app_id = <app-id> AND timestamp >= '<since>'
 GROUP BY day ORDER BY day
 ```
+
+## Legacy Database Recovery
+
+If a command reports an incompatible legacy database schema, preserve the old file by choosing a new `--db` path, or obtain user permission to run `reset-db` against the same path and refetch. See [reset-db](references/commands.md#reset-db) for exact commands.
 
 ## Exit Codes
 

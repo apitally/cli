@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::auth::{resolve_api_base_url, resolve_api_key};
 use crate::request_logs::ensure_request_logs_table;
+use crate::traces::ensure_spans_table;
 use crate::utils::{api_get, open_db};
 
 #[derive(Deserialize, Serialize)]
@@ -75,25 +76,6 @@ pub(crate) fn ensure_application_logs_table(conn: &duckdb::Connection) -> Result
             logger VARCHAR,
             file VARCHAR,
             line INTEGER
-        )",
-    )?;
-    Ok(())
-}
-
-pub(crate) fn ensure_spans_table(conn: &duckdb::Connection) -> Result<()> {
-    conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS spans (
-            app_id INTEGER NOT NULL,
-            request_uuid VARCHAR NOT NULL,
-            span_id VARCHAR NOT NULL,
-            parent_span_id VARCHAR,
-            name VARCHAR NOT NULL,
-            kind VARCHAR NOT NULL,
-            start_time_ns BIGINT NOT NULL,
-            end_time_ns BIGINT NOT NULL,
-            duration_ns BIGINT NOT NULL,
-            status VARCHAR NOT NULL,
-            attributes JSON
         )",
     )?;
     Ok(())
@@ -186,32 +168,28 @@ fn write_application_logs_to_db(
 fn write_spans_to_db(
     conn: &duckdb::Connection,
     app_id: i64,
-    request_uuid: &str,
+    trace_id: &str,
     spans: &[SpanItem],
 ) -> Result<()> {
-    conn.execute(
-        "DELETE FROM spans WHERE app_id = ? AND request_uuid = ?",
-        duckdb::params![app_id, request_uuid],
-    )?;
     let mut stmt = conn.prepare(
-        "INSERT INTO spans (
-            app_id, request_uuid, span_id, parent_span_id, name, kind,
-            start_time_ns, end_time_ns, duration_ns, status, attributes
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT OR REPLACE INTO spans (
+            app_id, trace_id, span_id, parent_span_id, env, name, kind, status,
+            start_time_ns, end_time_ns, duration_ns, attributes, events, scope_name, scope_version
+        ) VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)",
     )?;
     for span in spans {
         let attributes = serde_json::to_string(&span.attributes)?;
         stmt.execute(duckdb::params![
             app_id,
-            request_uuid,
+            trace_id,
             &span.span_id,
             &span.parent_span_id,
             &span.name,
             &span.kind,
+            &span.status,
             span.start_time_ns,
             span.end_time_ns,
             span.duration_ns,
-            &span.status,
             &attributes,
         ])?;
     }
@@ -237,13 +215,15 @@ pub fn run(
     let data: RequestDetailsResponse = response.body_mut().read_json()?;
 
     if let Some((db_path, conn)) = &db {
+        ensure_spans_table(conn)?;
         ensure_request_logs_table(conn)?;
         ensure_application_logs_table(conn)?;
-        ensure_spans_table(conn)?;
 
         write_request_details_to_db(conn, app_id, &data)?;
         write_application_logs_to_db(conn, app_id, &data.request_uuid, &data.logs)?;
-        write_spans_to_db(conn, app_id, &data.request_uuid, &data.spans)?;
+        if let Some(trace_id) = &data.trace_id {
+            write_spans_to_db(conn, app_id, trace_id, &data.spans)?;
+        }
 
         eprintln!(
             "Request details written to tables 'request_logs', 'application_logs', 'spans' in {}.\nDone.",
@@ -364,6 +344,22 @@ mod tests {
         let mut server = mockito::Server::new();
         let mock = mock_request_details_endpoint(&mut server, 1, "abc-123");
         let (_dir, db_path) = temp_db();
+        let conn = open_db(&db_path).unwrap();
+        ensure_spans_table(&conn).unwrap();
+        conn.execute_batch(
+            "INSERT INTO spans (app_id, trace_id, span_id, parent_span_id, env, name, kind, status,
+                start_time_ns, end_time_ns, duration_ns, attributes, events, scope_name, scope_version)
+             VALUES (1, '0000000000000000aaaaaaaaaaaaaaaa', '00000000000000aa', '00000000000000bb',
+                'staging', 'old name', 'CLIENT', 'ERROR', 1, 2, 1, '{}',
+                '[{\"name\":\"exception\"}]', 'test', '1.0');
+             INSERT INTO spans (app_id, trace_id, span_id, start_time_ns, name) VALUES
+                (1, '0000000000000000aaaaaaaaaaaaaaaa', '00000000000000bb', 1, 'sibling'),
+                (1, '0000000000000000bbbbbbbbbbbbbbbb', '00000000000000aa', 1, 'other trace'),
+                (2, '0000000000000000aaaaaaaaaaaaaaaa', '00000000000000aa', 1, 'other app');",
+        )
+        .unwrap();
+        drop(conn);
+        let mut buf = Vec::new();
 
         run(
             1,
@@ -371,10 +367,11 @@ mod tests {
             Some(&db_path),
             Some("test-key"),
             Some(&server.url()),
-            Vec::new(),
+            &mut buf,
         )
         .unwrap();
         mock.assert();
+        assert!(buf.is_empty());
 
         let conn = open_db(&db_path).unwrap();
 
@@ -399,9 +396,38 @@ mod tests {
             .unwrap();
         assert_eq!(log_message, "handling request");
 
-        let span_name: String = conn
-            .query_row("SELECT name FROM spans", [], |row| row.get(0))
+        let span_json: String = conn
+            .query_row(
+                "SELECT to_json(spans) FROM spans JOIN request_logs
+                 ON spans.app_id = request_logs.app_id AND spans.trace_id = request_logs.trace_id
+                 WHERE request_logs.app_id = 1 AND request_logs.request_uuid = 'abc-123'
+                 AND spans.span_id = '00000000000000aa'",
+                [],
+                |row| row.get(0),
+            )
             .unwrap();
-        assert_eq!(span_name, "GET /test");
+        let response: serde_json::Value =
+            serde_json::from_str(sample_request_details_json()).unwrap();
+        let mut expected = response["spans"][0].clone();
+        expected["app_id"] = serde_json::json!(1);
+        expected["trace_id"] = response["trace_id"].clone();
+        for field in ["env", "events", "scope_name", "scope_version"] {
+            expected[field] = serde_json::Value::Null;
+        }
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&span_json).unwrap(),
+            expected
+        );
+        let span_names: Vec<String> = conn
+            .prepare("SELECT name FROM spans ORDER BY name")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(
+            span_names,
+            ["GET /test", "other app", "other trace", "sibling"]
+        );
     }
 }
