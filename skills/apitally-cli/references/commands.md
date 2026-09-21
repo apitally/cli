@@ -280,150 +280,100 @@ npx @apitally/cli traces <app-id> [--since <datetime>] \
   [--sample <n|rate>] [--limit <n>] [--db [<path>]]
 ```
 
-Retrieve trace spans for an app.
+Fetch trace spans for an app. Outputs NDJSON to stdout by default, with one span per row.
 
-- `--since`: Inclusive span start time (ISO 8601 or relative duration); required unless a nonempty positive `trace_id` filter uses `eq` or `in`
-- `--until`: Exclusive span start time; defaults to now
+- `--since`: Span start time, inclusive (ISO 8601 or relative duration); required unless a nonempty `trace_id` filter uses `eq` or `in`
+- `--until`: Span start time, exclusive; defaults to now
 - `--fields`: Comma-separated list or JSON array of field names to include
 - `--filters`: JSON array of filter objects
-- `--sample`: Approximate span count (positive integer, e.g. `1000`) or rate (float > 0 and <= 0.5, e.g. `0.1`)
+- `--sample`: Approximate sample size (positive integer, e.g. `1000`) or sample rate (float > 0 and <= 0.5, e.g. `0.1`)
 - `--limit`: Maximum number of spans, from 1 to 1,000,000 (default: 1,000,000)
-- `--db`: Write to the shared `spans` table instead of stdout; omit the path to use the default database
+- `--db`: Write to `spans` table in DuckDB instead of outputting NDJSON to stdout
 
-### Time bounds and result completeness
+Timestamps without timezone are treated as UTC. Results are ordered by start time.
 
-Without a positive trace-ID filter, `--since` is required and omitted `--until` defaults to now. With a nonempty `trace_id` `eq`/`in` filter, omitted bounds remain unbounded, even when only `--since` is supplied. Explicit bounds still constrain the lookup. `neq`, `not_in`, and `in` with an empty list do not permit omission of `--since`.
-
-Datetimes without a timezone are UTC. If both bounds exist, `since` must precede `until`. Results are ordered by start time ascending, then trace ID and span ID ascending. There is no pagination or continuation token.
-
-Filters return matching spans, not all spans in matching traces. Sampling is approximate and operates on `(trace_id, span_id)`, not whole traces; the limit still applies afterward. Sampling, filters, limits, or time bounds can leave traces incomplete. To expand a discovery result, fetch its trace IDs with only a positive trace-ID filter, removing discovery filters, sampling, and unnecessary bounds or lower limits. The 1,000,000-span cap still applies. Do not treat partial results as complete-trace statistics.
-
-Without `--db`, the CLI streams NDJSON to stdout unchanged. With `--db`, it streams Arrow into DuckDB; stdout is empty and progress goes to stderr. Both `traces --db` and `request-details --db` populate **one `spans` table**, keyed by `(app_id, trace_id, span_id)`. Each fetch replaces complete matching rows, so omitted optional columns become `NULL`. Other spans remain, including on an empty response. See [legacy database recovery](#reset-db) if an old span schema is detected.
+Filters and sampling select individual spans, not whole traces. To fetch related spans, query their trace IDs without other filters, sampling, or time bounds; the limit still applies.
 
 ### Fields
 
-| Field | Type | Default | Always included | Notes |
-| --- | --- | --- | --- | --- |
-| `trace_id` | string (ID) | yes | yes | 32-character lowercase hex |
-| `span_id` | string (ID) | yes | yes | 16-character lowercase hex |
-| `parent_span_id` | string (ID) or null | yes | no | 16-character lowercase hex; null for no parent |
-| `env` | string or null | yes | no | Environment name |
-| `name` | string | yes | no | Span operation name |
-| `kind` | enum string | yes | no | `UNSPECIFIED`, `INTERNAL`, `SERVER`, `CLIENT`, `PRODUCER`, `CONSUMER` |
-| `status` | enum string | yes | no | `UNSET`, `OK`, `ERROR` |
-| `start_time_ns` | int64 | yes | yes | Unix epoch nanoseconds |
-| `end_time_ns` | int64 | yes | no | Unix epoch nanoseconds |
-| `duration_ns` | int64 | yes | no | Nanoseconds |
-| `attributes` | object | no | no | Attribute names mapped to JSON values |
-| `events` | array of objects | no | no | Each event has `timestamp`, `name`, and `attributes` |
-| `scope_name` | string or null | no | no | Instrumentation scope |
-| `scope_version` | string or null | no | no | Instrumentation scope version |
+| Field            | Type             | Default | Notes                                                                 |
+| ---------------- | ---------------- | ------- | --------------------------------------------------------------------- |
+| `trace_id`       | string (ID)      | yes     | 32-character lowercase hex                                            |
+| `span_id`        | string (ID)      | yes     | 16-character lowercase hex                                            |
+| `parent_span_id` | string (ID)      | yes     | 16-character lowercase hex; null for no parent                        |
+| `env`            | string           | yes     | Environment name                                                      |
+| `name`           | string           | yes     | Span operation name                                                   |
+| `kind`           | enum string      | yes     | `UNSPECIFIED`, `INTERNAL`, `SERVER`, `CLIENT`, `PRODUCER`, `CONSUMER` |
+| `status`         | enum string      | yes     | `UNSET`, `OK`, `ERROR`                                                |
+| `start_time_ns`  | int64            | yes     | Unix epoch nanoseconds                                                |
+| `end_time_ns`    | int64            | yes     | Unix epoch nanoseconds                                                |
+| `duration_ns`    | int64            | yes     | Nanoseconds                                                           |
+| `attributes`     | object           | no      | Attribute names mapped to JSON values                                 |
+| `events`         | array of objects | no      | Each event object has `timestamp`, `name`, and `attributes` keys      |
+| `scope_name`     | string           | no      | Instrumentation scope                                                 |
+| `scope_version`  | string           | no      | Instrumentation scope version                                         |
 
-Omitting `--fields` selects defaults. Providing it replaces the default set: the API prepends `trace_id`, `span_id`, and `start_time_ns`, removes duplicates, then includes requested fields. `--fields '[]'` returns only those three required fields.
+Default fields are included when `--fields` is omitted. Providing `--fields` replaces the defaults, but `trace_id`, `span_id`, and `start_time_ns` are always included.
 
-Span and event attributes contain native JSON values. Event timestamps are ISO 8601 UTC strings with nanosecond precision, also preserved in DuckDB JSON. See [JSON extraction examples](duckdb_json_functions.md#examples).
+Event timestamps are ISO 8601 UTC strings with nanosecond precision. See [JSON extraction examples](duckdb_json_functions.md#examples) for querying attributes and events.
 
 ### Filters
 
-All 14 fields can be filtered, even if not selected for output. Pass `--filters` as a JSON array; clauses are combined with AND.
+Pass `--filters` as a JSON array of filter objects. Multiple filters are combined with AND.
 
 Filter object keys:
 
-- `field`: Field name (aliases: `column`, `col`)
-- `op`: Operator (alias: `operator`)
-- `value`: Comparison value (alias: `val`); omit for existence/null checks
-- `key`: Case-sensitive attribute name; valid only for `attributes` and `events`
-- `event_name`: Exact, case-sensitive event name; valid only for `events`
-
-Field and operator names are trimmed and lowercased. Enum values are case-sensitive.
+- `field`: field name to filter on
+- `op`: comparison operator
+- `value`: comparison value (omit for existence/null checks)
+- `key`: case-sensitive attribute name, required for `attributes` and optional for `events`
+- `event_name`: exact, case-sensitive event name, only for `events`
 
 #### Operators by field type
 
-| Category | Fields | Operators |
-| --- | --- | --- |
-| String | `env`, `name`, `scope_name`, `scope_version` | `eq`, `neq`, `in`, `not_in`, `like`, `not_like`, `ilike`, `not_ilike`, `contains`, `not_contains`, `is_null`, `is_not_null` |
-| Integer | `start_time_ns`, `end_time_ns`, `duration_ns` | `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in` |
-| Enum | `kind`, `status` | `eq`, `neq`, `in`, `not_in` |
-| String ID | `trace_id`, `span_id`, `parent_span_id` | `eq`, `neq`, `in`, `not_in`, `is_null`, `is_not_null` |
-| Attribute/event map | `attributes`, `events` | `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`, `like`, `not_like`, `ilike`, `not_ilike`, `contains`, `not_contains`, `exists`, `not_exists` (subject to value type below) |
+All fields can be used in filters, even if not selected for output. Available operators depend on the field type:
+
+- **string**: `eq`, `neq`, `in`, `not_in`, `like`, `not_like`, `ilike`, `not_ilike`, `contains`, `not_contains`; nullable fields also support `is_null`, `is_not_null`
+- **int64**: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`
+- **enum string**: `eq`, `neq`, `in`, `not_in`
+- **string (ID)**: `eq`, `neq`, `in`, `not_in`; `parent_span_id` also supports `is_null`, `is_not_null`
+- **attributes / events**: operators depend on the attribute value type (see below)
 
 #### Value rules
 
-- String fields and IDs take JSON strings. `trace_id` requires exactly 32 hex characters; span IDs require exactly 16. Hex case is accepted and normalized to lowercase.
-- `is_null`/`is_not_null` are rejected for `trace_id`, `span_id`, and `name`; use them for nullable `parent_span_id`, `env`, `scope_name`, or `scope_version`.
-- Integer fields take JSON integers, not numeric strings, floats, or booleans.
-- Enum values must use the uppercase values in the field table.
-- `in`/`not_in` take arrays of the field's value type; other comparisons take scalars. Scalar-field membership arrays may be empty. JSON null is not a comparison value or array item.
-- Omit `value` for `exists`, `not_exists`, `is_null`, and `is_not_null`.
-- `like`/`not_like` and `ilike`/`not_ilike` use SQL patterns (`%` and `_`). `ilike` variants ignore case. `contains`/`not_contains` are case-insensitive substring comparisons without wildcard syntax.
-- For nullable scalar fields, `not_in` can match rows whose field is null, unlike ordinary SQL `NOT IN`. This does not mean that JSON null is allowed in the supplied list.
+- Values must match the field type. IDs accept either hex case and are normalized to lowercase; enums use the uppercase values in the field table.
+- `in`/`not_in`: value must be a JSON array; other comparisons take scalars. JSON null is not allowed as a value or array item.
+- `exists`/`not_exists`/`is_null`/`is_not_null`: omit value entirely
+- `like`/`ilike`/`not_like`/`not_ilike`: use `%` and `_` as wildcards; `ilike` variants are case-insensitive
+- `contains`/`not_contains`: case-insensitive substring match (no wildcards needed)
+- `not_in` can match null fields, unlike SQL `NOT IN`
 
 #### Attribute and event rules
 
-- `attributes` requires `key` for every operator.
-- `events` accepts `key`, `event_name`, or both. Without `key`, supply `event_name` and use only `exists`/`not_exists`.
-- String attributes support `eq`, `neq`, `in`, `not_in`, `like`, `not_like`, `ilike`, `not_ilike`, `contains`, `not_contains`.
-- Numeric attributes support `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`. Integers and finite floats can be mixed in a membership list.
-- Boolean attributes support only `eq`, `neq`, `in`, `not_in`.
-- Attribute membership lists must be nonempty and use one scalar type, except the integer/float mixture. Arrays and objects are not comparison values; use existence checks for those attributes.
-- Comparisons require the key to exist and its JSON type to match the scalar type. Missing keys do not satisfy `neq` or `not_in`.
-- An event clause matches when **any event** satisfies its name/key/value conditions. `not_exists` negates that existence. Event `neq` still means any event with a different value, not that no event equals the value.
-- Separate event clauses may match different events in one span. Selecting `events` returns all events for matching spans, not only matching events.
+- `exists`/`not_exists` check for an attribute or event. Event filters require `key`, `event_name`, or both; without `key`, only existence checks are supported.
+- String attributes support the string operators above except null checks. Numeric attributes support the int64 operators, with integer or float values. Boolean attributes support `eq`, `neq`, `in`, `not_in`.
+- Attribute membership arrays must be nonempty and contain one scalar type (integers and floats may be mixed). Use existence checks for array or object attributes.
+- Comparisons require a matching JSON type and an existing key, including for `neq` and `not_in`.
+- Each event filter matches any event satisfying its conditions; `not_exists` negates that match. Separate filters may match different events. Output includes all events of matching spans.
 
 #### Filter examples
 
-Each line is a separate valid `--filters` value:
-
 ```json
 [{"field":"trace_id","op":"eq","value":"0123456789abcdef0123456789abcdef"}]
-[{"field":"span_id","op":"eq","value":"0123456789abcdef"}]
 [{"field":"env","op":"eq","value":"prod"},{"field":"duration_ns","op":"gte","value":100000000}]
 [{"field":"kind","op":"in","value":["CLIENT","INTERNAL"]}]
-[{"field":"status","op":"eq","value":"ERROR"}]
 [{"field":"parent_span_id","op":"is_null"}]
 [{"field":"name","op":"ilike","value":"%query%"}]
-[{"field":"scope_name","op":"is_not_null"}]
 [{"field":"attributes","key":"db.system","op":"eq","value":"postgresql"}]
-[{"field":"attributes","key":"retry.count","op":"gte","value":2}]
-[{"field":"attributes","key":"cached","op":"eq","value":true}]
 [{"field":"attributes","key":"db.statement","op":"exists"}]
 [{"field":"events","event_name":"exception","op":"exists"}]
 [{"field":"events","event_name":"exception","key":"exception.type","op":"eq","value":"TimeoutError"}]
-[{"field":"events","key":"code","op":"in","value":[500,503]}]
 ```
 
-### Output examples
-
-Default NDJSON:
+Example NDJSON output (without `--db`):
 
 ```json
 {"trace_id":"0123456789abcdef0123456789abcdef","span_id":"0123456789abcdef","start_time_ns":1767225600000000000,"parent_span_id":null,"env":"prod","name":"GET /users","kind":"SERVER","status":"OK","end_time_ns":1767225600250000000,"duration_ns":250000000}
-```
-
-With `--fields attributes,events` (required fields are still included):
-
-```json
-{"trace_id":"0123456789abcdef0123456789abcdef","span_id":"0123456789abcdef","start_time_ns":1767225600000000000,"attributes":{"db.system":"postgresql","retry.count":2,"cached":true},"events":[{"timestamp":"2026-01-01T00:00:00.123456001Z","name":"exception","attributes":{"exception.type":"TimeoutError"}}]}
-```
-
-### Command examples
-
-These examples use app `1` and a sample trace ID; substitute IDs from your investigation.
-
-```bash
-# Discover slow spans in a time range (100 ms = 100000000 ns).
-npx @apitally/cli traces 1 --since 24h \
-  --filters '[{"field":"env","op":"eq","value":"prod"},{"field":"duration_ns","op":"gte","value":100000000}]'
-
-# Fetch all available spans for a known trace without time bounds.
-npx @apitally/cli traces 1 \
-  --filters '[{"field":"trace_id","op":"eq","value":"0123456789abcdef0123456789abcdef"}]'
-
-# Store all fields for discovered trace IDs, without discovery restrictions.
-npx @apitally/cli traces 1 \
-  --filters '[{"field":"trace_id","op":"in","value":["0123456789abcdef0123456789abcdef"]}]' \
-  --fields 'trace_id,span_id,parent_span_id,env,name,kind,status,start_time_ns,end_time_ns,duration_ns,attributes,events,scope_name,scope_version' \
-  --db ./trace-investigation.duckdb
 ```
 
 ## `sql`
