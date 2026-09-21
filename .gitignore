@@ -10,6 +10,7 @@ npm/apitally.exe
 .cursor/
 .vscode/
 
-# Skills
+# Agents
 .agents/skills/
+.pi/tasks/
 skills-lock.json
