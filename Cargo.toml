@@ -16,7 +16,7 @@ arrow-ipc = { version = "=58.4.0", features = ["lz4"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 clap = { version = "4", features = ["derive", "env"] }
 dirs = "6"
-duckdb = { version = "=1.10505.0", features = ["bundled", "appender-arrow"] }
+duckdb = { version = "=1.10506.0", features = ["bundled", "appender-arrow"] }
 iana-time-zone = "0.1"
 open = "5"
 regex = "1"
