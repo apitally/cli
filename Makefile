@@ -2,8 +2,8 @@
 
 install:
 	mise install
-	cargo install cargo-llvm-cov
-	rustup component add llvm-tools-preview
+	mise exec -- cargo install cargo-llvm-cov
+	mise exec -- rustup component add llvm-tools-preview
 
 check:
 	cargo fmt --check
