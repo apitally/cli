@@ -36,7 +36,7 @@ skills/
 - **HTTP client**: ureq (blocking; response body implements `Read` for streaming)
 - **Serialization**: serde + serde_json
 - **Error handling**: anyhow
-- **Embedded database**: duckdb (statically linked, bundled Arrow via `duckdb::arrow::*`)
+- **Embedded database**: duckdb (statically linked with the ICU and JSON extensions, bundled Arrow via `duckdb::arrow::*`)
 - **Distribution**: npm package (`@apitally/cli`); postinstall downloads the native binary
 
 ## CLI Subcommands
@@ -68,6 +68,8 @@ The API base URL follows the same pattern: `--api-base-url` flag > `APITALLY_API
 
 ## Common Commands
 
+Building requires CMake, because DuckDB is compiled from source with the ICU extension.
+
 ```bash
 cargo build              # Build (debug)
 cargo build --release    # Build (release, optimized)
@@ -85,7 +87,7 @@ The CLI is published to npm as `@apitally/cli`. The npm package contains no Rust
 
 Triggered by publishing a GitHub release. Two jobs:
 
-1. **build** — cross-compiles for 6 targets (linux x64/arm64, macOS x64/arm64, Windows x64/arm64), packages as `.tar.gz`/`.zip`, uploads as artifacts.
+1. **build** — builds for 6 targets (linux x64/arm64, macOS x64/arm64, Windows x64/arm64) on native runners, except macOS x64, which is cross-compiled on macOS arm64. Packages as `.tar.gz`/`.zip`, uploads as artifacts.
 2. **publish** — attaches artifacts to the GitHub release, then publishes to npm (version derived from the git tag; pre-releases use the `next` dist-tag).
 
 ## Architecture Patterns
@@ -125,6 +127,7 @@ Inline `#[cfg(test)] mod tests` in each source file. Run with `cargo test`.
 - Prefer simple, concise code; avoid unnecessary abstractions
 - Use `anyhow::Result` for error handling in application code
 - Use `duckdb::arrow::*` re-exports for all Arrow type imports (ensures type compatibility with duckdb). The standalone `arrow` and `arrow-ipc` crates in `Cargo.toml` exist solely to enable features (`ipc`, `json`, `chrono-tz` on `arrow`; `lz4` on `arrow-ipc`) that duckdb doesn't activate on its bundled Arrow. Cargo unifies both into a single Arrow instance. When updating `duckdb`, check that its Arrow version still matches and bump the `arrow`/`arrow-ipc` versions in `Cargo.toml` if needed (`cargo tree -p duckdb --depth 1`).
+- `duckdb` is a git dependency on a duckdb-rs release tag, because the ICU extension requires the `bundled-cmake` feature, which needs the full DuckDB sources that the crates.io package omits. To update, change the `tag` in `Cargo.toml`.
 - Follow existing code patterns and conventions
 - Verify work compiles and passes `cargo clippy` before considering a task complete
 - Keep user-facing output concise

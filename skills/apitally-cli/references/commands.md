@@ -396,7 +396,7 @@ Available tables: `apps`, `app_envs`, `consumers`, `endpoints`, `metrics`, `requ
 
 **Important:** The database may contain data from previous sessions. Always filter queries by `app_id` and the current investigation scope: `timestamp` for request logs, `period_start`/`period_end` for metrics, and exact `trace_id` values or integer `start_time_ns` bounds for spans.
 
-DuckDB uses a [PostgreSQL-compatible SQL dialect](https://duckdb.org/docs/stable/sql/dialect/overview). The bundled DuckDB has no ICU extension, so `TIMESTAMPTZ` columns cannot be cast directly to `DATE`. Use `(timestamp AT TIME ZONE 'UTC')::DATE` or `date_trunc('day', timestamp AT TIME ZONE 'UTC')` for date conversion and grouping.
+DuckDB uses a [PostgreSQL-compatible SQL dialect](https://duckdb.org/docs/stable/sql/dialect/overview). `TIMESTAMPTZ` values are output, truncated, and cast to `DATE` in the system time zone. Use `timestamp AT TIME ZONE 'UTC'` for UTC.
 
 Example output:
 
