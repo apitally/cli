@@ -1,6 +1,6 @@
 # DuckDB JSON Functions
 
-Functions for querying `request_body_json`/`response_body_json` columns in `request_logs` and `attributes`/`events` columns in `spans` (DuckDB `JSON` type).
+Functions for querying `request_body_json`/`response_body_json`/`custom_attributes` columns in `request_logs` and `attributes`/`events` columns in `spans` (DuckDB `JSON` type).
 
 ## Extraction Operators
 
@@ -70,6 +70,13 @@ FROM request_logs
 WHERE app_id = 123
   AND timestamp >= '2025-01-01'
   AND status_code >= 400
+
+-- Extract custom request attributes (quote keys containing literal dots as a single JSONPath key)
+SELECT request_uuid,
+       custom_attributes->>'$."tenant.id"' AS tenant_id,
+       (custom_attributes->>'$."cart.item_count"')::BIGINT AS cart_item_count
+FROM request_logs
+WHERE app_id = 123 AND timestamp >= '2025-01-01'
 
 -- Extract native JSON span attributes (quote keys containing literal dots as a single JSONPath key)
 SELECT span_id,

@@ -218,15 +218,19 @@ enum Command {
         /// Available fields: timestamp, request_uuid, env, method, path,
         /// url, consumer_id, request_headers, request_size_bytes, request_body_json,
         /// status_code, response_time_ms, response_headers, response_size_bytes,
-        /// response_body_json, client_ip, client_country_iso_code, exception_type,
-        /// exception_message, exception_stacktrace, sentry_event_id, trace_id.
+        /// response_body_json, client_ip, client_country_iso_code, custom_attributes,
+        /// exception_type, exception_message, exception_stacktrace, sentry_event_id,
+        /// trace_id.
         ///
         /// Always included: timestamp, request_uuid, method, url, trace_id.
         ///
         /// Defaults to all fields except request_headers, request_body_json,
-        /// response_headers, response_body_json, exception_type, exception_message,
-        /// exception_stacktrace, sentry_event_id.
+        /// response_headers, response_body_json, custom_attributes, exception_type,
+        /// exception_message, exception_stacktrace, sentry_event_id.
         /// With --db, refetching replaces whole rows; omitted fields become null.
+        ///
+        /// custom_attributes is an object mapping attribute names to JSON values
+        /// ({} when none are set).
         #[arg(long)]
         fields: Option<String>,
 
@@ -236,17 +240,21 @@ enum Command {
         ///   string fields: eq, neq, in, not_in, like, not_like, ilike, not_ilike, contains, not_contains, is_null, is_not_null
         ///   numeric fields: eq, neq, gt, gte, lt, lte, in, not_in
         ///   header fields: eq, neq, in, not_in, like, not_like, ilike, not_ilike, contains, not_contains, exists, not_exists
+        ///   custom_attributes: eq, neq, gt, gte, lt, lte, in, not_in, like, not_like, ilike, not_ilike, contains, not_contains, exists, not_exists
         ///   ID fields: eq, neq, in, not_in, is_null, is_not_null
         ///
         /// For "in" and "not_in", "value" must be a JSON array. For header fields,
-        /// use "key" for the header name. For "exists", "not_exists", "is_null",
-        /// and "is_not_null", omit "value".
+        /// use "key" for the header name. custom_attributes requires "key" (the
+        /// case-sensitive attribute name); its operators depend on the attribute
+        /// value type, as for traces attributes. For "exists", "not_exists",
+        /// "is_null", and "is_not_null", omit "value".
         ///
         /// Examples:
         ///   [{"field":"status_code","op":"gte","value":400}]
         ///   [{"field":"path","op":"ilike","value":"/users/%"}]
         ///   [{"field":"request_headers","key":"content-type","op":"eq","value":"application/json"}]
         ///   [{"field":"response_body_json","op":"ilike","value":"%error%"}]
+        ///   [{"field":"custom_attributes","key":"tenant.id","op":"eq","value":"acme"}]
         #[arg(long)]
         filters: Option<String>,
 

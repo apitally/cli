@@ -28,6 +28,7 @@ struct RequestDetailsResponse {
     response_body_json: Option<String>,
     client_ip: Option<String>,
     client_country_iso_code: Option<String>,
+    custom_attributes: serde_json::Value,
     trace_id: Option<String>,
     exception: Option<ExceptionItem>,
     logs: Vec<ApplicationLogItem>,
@@ -95,6 +96,7 @@ fn write_request_details_to_db(
     };
     let request_headers = headers_to_json(&data.request_headers)?;
     let response_headers = headers_to_json(&data.response_headers)?;
+    let custom_attributes = serde_json::to_string(&data.custom_attributes)?;
     let exception = data.exception.as_ref();
 
     conn.execute(
@@ -102,9 +104,9 @@ fn write_request_details_to_db(
             app_id, timestamp, request_uuid, env, method, path, url, consumer_id,
             request_headers, request_size_bytes, request_body_json,
             status_code, response_time_ms, response_headers, response_size_bytes, response_body_json,
-            client_ip, client_country_iso_code,
+            client_ip, client_country_iso_code, custom_attributes,
             exception_type, exception_message, exception_stacktrace, sentry_event_id, trace_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         duckdb::params![
             app_id,
             &data.timestamp,
@@ -124,6 +126,7 @@ fn write_request_details_to_db(
             &data.response_body_json,
             &data.client_ip,
             &data.client_country_iso_code,
+            &custom_attributes,
             exception.and_then(|e| e.r#type.as_deref()),
             exception.and_then(|e| e.message.as_deref()),
             exception.and_then(|e| e.stacktrace.as_deref()),
@@ -263,6 +266,7 @@ mod tests {
             "response_headers": [["X-Request-Id", "abc"]],
             "request_body_json": null,
             "response_body_json": "{\"ok\":true}",
+            "custom_attributes": {"tenant.id": "acme", "cart.item_count": 3},
             "trace_id": "0000000000000000aaaaaaaaaaaaaaaa",
             "exception": {
                 "type": "ValueError",
@@ -334,6 +338,7 @@ mod tests {
         assert_eq!(output["method"], "GET");
         assert_eq!(output["status_code"], 200);
         assert_eq!(output["trace_id"], "0000000000000000aaaaaaaaaaaaaaaa");
+        assert_eq!(output["custom_attributes"]["tenant.id"], "acme");
         assert_eq!(output["exception"]["type"], "ValueError");
         assert_eq!(output["logs"][0]["message"], "handling request");
         assert_eq!(output["spans"][0]["name"], "GET /test");
@@ -375,12 +380,26 @@ mod tests {
 
         let conn = open_db(&db_path).unwrap();
 
-        let (method, url, consumer_id, trace_id): (String, String, Option<i64>, Option<String>) =
-            conn.query_row(
-                "SELECT method, url, consumer_id, trace_id FROM request_logs \
-                 WHERE app_id = 1 AND request_uuid = 'abc-123'",
+        let (method, url, consumer_id, trace_id, tenant_id): (
+            String,
+            String,
+            Option<i64>,
+            Option<String>,
+            String,
+        ) = conn
+            .query_row(
+                "SELECT method, url, consumer_id, trace_id, custom_attributes->>'$.\"tenant.id\"' \
+                 FROM request_logs WHERE app_id = 1 AND request_uuid = 'abc-123'",
                 [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
             )
             .unwrap();
         assert_eq!(method, "GET");
@@ -390,6 +409,7 @@ mod tests {
             Some("0000000000000000aaaaaaaaaaaaaaaa")
         );
         assert_eq!(consumer_id, Some(42));
+        assert_eq!(tenant_id, "acme");
 
         let log_message: String = conn
             .query_row("SELECT message FROM application_logs", [], |row| row.get(0))

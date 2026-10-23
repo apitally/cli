@@ -13,7 +13,7 @@ description: >
 The Apitally CLI retrieves data from [Apitally](https://apitally.io) and optionally stores it in a local DuckDB database for investigation with SQL. Three main data sources:
 
 - **Metrics** — pre-aggregated data (request counts, error rates, response time percentiles, throughput). Retention: **30 days** at 1-minute intervals, **13 months** at 30-minute intervals.
-- **Request logs** - individual API requests with method, URL, status code, response time, consumer, headers, payloads, exceptions, and trace IDs. Retention: **15 days**.
+- **Request logs** - individual API requests with method, URL, status code, response time, consumer, headers, payloads, custom attributes, exceptions, and trace IDs. Retention: **15 days**.
 - **Traces** - individual operations such as database queries and external calls, with duration, status, attributes, and events. Availability depends on ingestion, configuration, and span retention.
 
 Run commands with `npx` (no install needed):
@@ -224,7 +224,7 @@ WHERE app_id = <app-id>
   AND len([s FOR s IN request_headers IF lower(s.name) = 'authorization']) > 0
 ```
 
-### Query JSON body fields
+### Query JSON fields
 
 Body fields (`request_body_json`, `response_body_json`) are of type `JSON`. Use DuckDB JSON operators and functions.
 
@@ -238,6 +238,17 @@ WHERE app_id = <app-id>
   AND timestamp >= '<since>'
   AND response_body_json IS NOT NULL
   AND (response_body_json->>'$.error') IS NOT NULL
+```
+
+`custom_attributes` is a `JSON` object of attributes set on the request through the Apitally SDKs. Quote keys containing dots as a single JSONPath key:
+
+```sql
+SELECT custom_attributes->>'$."tenant.id"' AS tenant_id, count(*) AS requests
+FROM request_logs
+WHERE app_id = <app-id>
+  AND timestamp >= '<since>'
+GROUP BY tenant_id
+ORDER BY requests DESC
 ```
 
 See [references/duckdb_json_functions.md](references/duckdb_json_functions.md) for more JSON functions and examples.
