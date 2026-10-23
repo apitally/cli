@@ -62,8 +62,8 @@ List all consumers for an app. Use this to map consumer IDs in request logs to i
 Example NDJSON output (without `--db`):
 
 ```json
-{"id":1,"identifier":"bob@example.com","name":"Bob","group":{"id":1,"name":"Admins"},"created_at":"2026-01-01T00:00:00Z","last_request_at":"2026-01-01T01:00:00Z"}
-{"id":2,"identifier":"alice@example.com","name":"Alice","group":null,"created_at":"2026-01-02T00:00:00Z","last_request_at":"2026-01-02T02:00:00Z"}
+{"id":1,"identifier":"bob@example.com","name":"Bob","group":{"id":1,"name":"Admins"},"attributes":{"plan":"pro"},"created_at":"2026-01-01T00:00:00Z","last_request_at":"2026-01-01T01:00:00Z"}
+{"id":2,"identifier":"alice@example.com","name":"Alice","group":null,"attributes":{},"created_at":"2026-01-02T00:00:00Z","last_request_at":"2026-01-02T02:00:00Z"}
 ```
 
 ## `endpoints`

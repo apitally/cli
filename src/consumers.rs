@@ -20,6 +20,7 @@ struct ConsumerItem {
     identifier: String,
     name: String,
     group: Option<ConsumerGroupItem>,
+    attributes: serde_json::Value,
     created_at: String,
     last_request_at: String,
 }
@@ -58,10 +59,12 @@ pub(crate) fn ensure_consumers_table(conn: &duckdb::Connection) -> Result<()> {
             identifier TEXT NOT NULL,
             name TEXT NOT NULL,
             \"group\" TEXT,
+            attributes JSON,
             created_at TIMESTAMPTZ NOT NULL,
             last_request_at TIMESTAMPTZ,
             UNIQUE (app_id, consumer_id)
-        )",
+        );
+        ALTER TABLE consumers ADD COLUMN IF NOT EXISTS attributes JSON;",
     )?;
     Ok(())
 }
@@ -73,18 +76,20 @@ fn write_consumers_to_db(
 ) -> Result<()> {
     let mut stmt = conn.prepare(
         "INSERT OR REPLACE INTO consumers (
-            app_id, consumer_id, identifier, name, \"group\",
+            app_id, consumer_id, identifier, name, \"group\", attributes,
             created_at, last_request_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     )?;
     for consumer in consumers {
         let group_name = consumer.group.as_ref().map(|g| g.name.as_str());
+        let attributes = serde_json::to_string(&consumer.attributes)?;
         stmt.execute(duckdb::params![
             app_id,
             consumer.id,
             consumer.identifier,
             consumer.name,
             group_name,
+            attributes,
             consumer.created_at,
             consumer.last_request_at,
         ])?;
@@ -170,6 +175,7 @@ mod tests {
                     "identifier": "user-1",
                     "name": "User One",
                     "group": null,
+                    "attributes": {"plan": "pro"},
                     "created_at": "2025-01-01T00:00:00Z",
                     "last_request_at": "2025-06-01T12:00:00Z"
                 }
@@ -187,6 +193,7 @@ mod tests {
                     "identifier": "user-2",
                     "name": "User Two",
                     "group": {"id": 1, "name": "Admins"},
+                    "attributes": {},
                     "created_at": "2025-02-01T00:00:00Z",
                     "last_request_at": "2025-06-15T12:00:00Z"
                 }
@@ -243,6 +250,7 @@ mod tests {
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0]["identifier"], "user-1");
         assert!(rows[0]["group"].is_null());
+        assert_eq!(rows[0]["attributes"]["plan"], "pro");
         assert_eq!(rows[1]["identifier"], "user-2");
         assert_eq!(rows[1]["group"]["name"], "Admins");
     }
@@ -280,5 +288,14 @@ mod tests {
             )
             .unwrap();
         assert_eq!(group.as_deref(), Some("Admins"));
+
+        let plan: Option<String> = conn
+            .query_row(
+                "SELECT attributes->>'$.plan' FROM consumers WHERE consumer_id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(plan.as_deref(), Some("pro"));
     }
 }

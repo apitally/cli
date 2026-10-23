@@ -36,13 +36,14 @@ CREATE TABLE consumers (
     identifier      TEXT NOT NULL,             -- e.g. email, username, API key name
     name            TEXT NOT NULL,             -- auto-generated from identifier if not set
     "group"         TEXT,                      -- optional consumer group name
+    attributes      JSON,                      -- custom attributes, JSON object with string values
     created_at      TIMESTAMPTZ NOT NULL,
     last_request_at TIMESTAMPTZ,
     UNIQUE (app_id, consumer_id)
 );
 ```
 
-The `identifier` is the consumer string set in the application (e.g. email, username, API key name). The `"group"` column name is quoted because it is a reserved word in SQL.
+The `identifier` is the consumer string set in the application (e.g. email, username, API key name). The `"group"` column name is quoted because it is a reserved word in SQL. Query attributes with `attributes->>'$.plan'` (quote keys containing dots: `attributes->>'$."billing.tier"'`).
 
 ## endpoints
 
