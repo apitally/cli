@@ -74,7 +74,7 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
      ```
 
      ```
-     npx @apitally/cli sql "SELECT consumer_id, identifier, name FROM consumers WHERE app_id = <app-id> AND attributes->>'$.plan' = 'pro'"
+     npx @apitally/cli sql "SELECT consumer_id, identifier, name FROM consumers WHERE app_id = <app-id> AND (attributes->>'$.plan') = 'pro'"
      ```
 
 4. **Fetch data** — choose based on the question. Always read the [command reference](references/commands.md) for available options.
