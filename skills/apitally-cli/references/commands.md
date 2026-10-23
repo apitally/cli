@@ -199,8 +199,6 @@ Timestamps without timezone are treated as UTC. Results are ordered by timestamp
 
 Default fields are included when `--fields` is omitted. Providing `--fields` replaces the defaults, but `timestamp`, `request_uuid`, `trace_id`, `method`, and `url` are always included. With `--db`, refetching replaces complete matching rows and sets omitted columns to `NULL`.
 
-`custom_attributes` contains attributes set on the request through the Apitally SDKs. It is an object mapping attribute names to JSON values, or `{}` when none are set.
-
 ### Filters
 
 Pass `--filters` as a JSON array of filter objects. Multiple filters are combined with AND.
