@@ -57,11 +57,8 @@ pub fn resolve_db(db: Option<Option<PathBuf>>) -> Result<Option<PathBuf>> {
 }
 
 pub fn open_db(path: &Path) -> Result<duckdb::Connection> {
-    let conn = duckdb::Connection::open(path)
-        .with_context(|| format!("failed to open database {}", path.display()))?;
-    // Makes date/time functions independent of the machine's time zone
-    conn.execute_batch("SET TimeZone = 'UTC'")?;
-    Ok(conn)
+    duckdb::Connection::open(path)
+        .with_context(|| format!("failed to open database {}", path.display()))
 }
 
 /// If `s` is a compact duration string (`<digits><m|h|d|w>`, e.g. `24h` or `7d`) or a simple

@@ -128,7 +128,6 @@ Inline `#[cfg(test)] mod tests` in each source file. Run with `cargo test`.
 - Use `anyhow::Result` for error handling in application code
 - Use `duckdb::arrow::*` re-exports for all Arrow type imports (ensures type compatibility with duckdb). The standalone `arrow` and `arrow-ipc` crates in `Cargo.toml` exist solely to enable features (`ipc`, `json`, `chrono-tz` on `arrow`; `lz4` on `arrow-ipc`) that duckdb doesn't activate on its bundled Arrow. Cargo unifies both into a single Arrow instance. When updating `duckdb`, check that its Arrow version still matches and bump the `arrow`/`arrow-ipc` versions in `Cargo.toml` if needed (`cargo tree -p duckdb --depth 1`).
 - `duckdb` is a git dependency on a duckdb-rs release tag, because the ICU extension requires the `bundled-cmake` feature, which needs the full DuckDB sources that the crates.io package omits. To update, change the `tag` in `Cargo.toml`.
-- The DuckDB session time zone is set to UTC in `open_db`, so date/time functions don't depend on the machine's time zone.
 - Follow existing code patterns and conventions
 - Verify work compiles and passes `cargo clippy` before considering a task complete
 - Keep user-facing output concise

@@ -259,7 +259,7 @@ See [references/duckdb_json_functions.md](references/duckdb_json_functions.md) f
 
 ### Date truncation and grouping
 
-Datetime columns are `TIMESTAMPTZ`. The session time zone is UTC, so date functions and casts like `timestamp::DATE` use UTC boundaries:
+Datetime columns are `TIMESTAMPTZ`. SQL output, date functions, and casts like `timestamp::DATE` use the system time zone, the same default as `metrics --timezone`. For UTC boundaries, use `timestamp AT TIME ZONE 'UTC'`:
 
 ```sql
 SELECT date_trunc('day', timestamp) AS day, count(*) AS n
