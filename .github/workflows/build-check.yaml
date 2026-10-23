@@ -28,7 +28,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       # Keeps DuckDB's CMake object paths below the MSVC 260 character limit
-      CARGO_TARGET_DIR: ${{ runner.os == 'Windows' && 'C:/t' || 'target' }}
+      CARGO_TARGET_DIR: ${{ startsWith(matrix.os, 'windows') && 'C:/t' || 'target' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
