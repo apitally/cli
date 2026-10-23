@@ -108,6 +108,7 @@ CREATE TABLE request_logs (
     response_body_json      JSON,               -- max 50 KB, null if too large
     client_ip               VARCHAR,
     client_country_iso_code VARCHAR,
+    custom_attributes       JSON,               -- attributes set through the SDKs, JSON object with native values
     exception_type          VARCHAR,
     exception_message       VARCHAR,
     exception_stacktrace    VARCHAR,

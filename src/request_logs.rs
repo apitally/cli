@@ -30,12 +30,14 @@ pub(crate) fn ensure_request_logs_table(conn: &duckdb::Connection) -> Result<()>
             response_body_json JSON,
             client_ip VARCHAR,
             client_country_iso_code VARCHAR,
+            custom_attributes JSON,
             exception_type VARCHAR,
             exception_message VARCHAR,
             exception_stacktrace VARCHAR,
             sentry_event_id VARCHAR,
             UNIQUE (app_id, request_uuid)
-        )",
+        );
+        ALTER TABLE request_logs ADD COLUMN IF NOT EXISTS custom_attributes JSON;",
     )?;
     Ok(())
 }
@@ -200,6 +202,7 @@ mod tests {
             Field::new("url", DataType::Utf8, false),
             Field::new("trace_id", DataType::Utf8, true),
             Field::new("request_headers", headers_list_type.clone(), true),
+            Field::new("custom_attributes", DataType::Utf8, false),
         ]));
         let headers_struct = StructArray::from(vec![
             (
@@ -239,6 +242,10 @@ mod tests {
                     ROW_COUNT
                 ])),
                 Arc::new(headers_list),
+                Arc::new(StringArray::from(vec![
+                    r#"{"tenant.id":"acme","cart.item_count":3}"#;
+                    ROW_COUNT
+                ])),
             ],
         )
         .unwrap();
@@ -356,6 +363,8 @@ mod tests {
                     AND request_headers[1].name = 'x-request-id'
                     AND request_headers[1].value = request_uuid
                     AND trace_id = '0123456789abcdef0123456789abcdef'
+                    AND (custom_attributes->>'$.\"tenant.id\"') = 'acme'
+                    AND (custom_attributes->>'$.\"cart.item_count\"')::BIGINT = 3
                  ) FROM request_logs",
                 [],
                 |row| Ok((row.get(0)?, row.get(1)?)),

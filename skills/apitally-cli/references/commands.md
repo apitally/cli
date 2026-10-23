@@ -191,12 +191,15 @@ Timestamps without timezone are treated as UTC. Results are ordered by timestamp
 | `response_body_json`      | string (JSON)                    | no      |
 | `client_ip`               | string                           | yes     |
 | `client_country_iso_code` | string                           | yes     |
+| `custom_attributes`       | object                           | no      |
 | `exception_type`          | string                           | no      |
 | `exception_message`       | string                           | no      |
 | `exception_stacktrace`    | string                           | no      |
 | `sentry_event_id`         | string (ID)                      | no      |
 
 Default fields are included when `--fields` is omitted. Providing `--fields` replaces the defaults, but `timestamp`, `request_uuid`, `trace_id`, `method`, and `url` are always included. With `--db`, refetching replaces complete matching rows and sets omitted columns to `NULL`.
+
+`custom_attributes` contains attributes set on the request through the Apitally SDKs. It is an object mapping attribute names to JSON values, or `{}` when none are set.
 
 ### Filters
 
@@ -207,7 +210,7 @@ Filter object keys:
 - `field`: field name to filter on
 - `op`: comparison operator
 - `value`: comparison value (omit for `exists`/`not_exists`)
-- `key`: header name, required only for `request_headers` and `response_headers`
+- `key`: header name, required for `request_headers` and `response_headers`; case-sensitive attribute name, required for `custom_attributes`
 
 #### Operators by field type
 
@@ -217,6 +220,7 @@ All fields can be used in filters. Available operators depend on the field type:
 - **string (datetime)**: `eq`, `neq`, `gt`, `gte`, `lt`, `lte` — value is an ISO 8601 datetime string
 - **string (ID) / int (ID)**: `eq`, `neq`, `in`, `not_in`, `is_null`, `is_not_null`
 - **array of string tuples (headers)**: `eq`, `neq`, `in`, `not_in`, `like`, `not_like`, `ilike`, `not_ilike`, `contains`, `not_contains`, `exists`, `not_exists` — requires `key`
+- **object (custom attributes)**: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`, `like`, `not_like`, `ilike`, `not_ilike`, `contains`, `not_contains`, `exists`, `not_exists`. Requires `key`; operators depend on the attribute value type, following the traces [attribute rules](#attribute-and-event-rules)
 - **int**: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`
 
 #### Value rules
@@ -237,6 +241,8 @@ All fields can be used in filters. Available operators depend on the field type:
 [{"field": "request_headers", "key": "x-api-version", "op": "exists"}]
 [{"field": "request_headers", "key": "content-type", "op": "eq", "value": "application/json"}]
 [{"field": "response_body_json", "op": "contains", "value": "error"}]
+[{"field": "custom_attributes", "key": "tenant.id", "op": "exists"}]
+[{"field": "custom_attributes", "key": "tenant.id", "op": "eq", "value": "acme"}]
 ```
 
 Example NDJSON output (without `--db`):
@@ -269,7 +275,7 @@ Example JSON output (without `--db`):
 
 <!-- prettier-ignore -->
 ```json
-{"timestamp":"2026-01-01T00:15:00.000Z","request_uuid":"2fbc1df6-3124-4ed1-a376-7d2c64e4d5cf","env":"prod","method":"GET","path":"/test/1","url":"https://api.example.com/test/1","consumer_id":1,"request_headers":[["content-type","application/json"]],"request_size_bytes":0,"request_body_json":null,"status_code":200,"response_time_ms":122,"response_headers":[["x-request-id","abc"]],"response_size_bytes":66,"response_body_json":"{\"ok\":true}","client_ip":"203.0.113.10","client_country_iso_code":"DE","trace_id":"0123456789abcdef0123456789abcdef","exception":null,"logs":[{"timestamp":"2026-01-01T00:15:00.100Z","message":"handling request","level":"INFO","logger":"app","file":"main.py","line":42}],"spans":[{"span_id":"0123456789abcdef","parent_span_id":null,"name":"GET /test/1","kind":"SERVER","start_time_ns":1767226500000000000,"end_time_ns":1767226500050000000,"duration_ns":50000000,"status":"OK","attributes":{"http.method":"GET"}}]}
+{"timestamp":"2026-01-01T00:15:00.000Z","request_uuid":"2fbc1df6-3124-4ed1-a376-7d2c64e4d5cf","env":"prod","method":"GET","path":"/test/1","url":"https://api.example.com/test/1","consumer_id":1,"request_headers":[["content-type","application/json"]],"request_size_bytes":0,"request_body_json":null,"status_code":200,"response_time_ms":122,"response_headers":[["x-request-id","abc"]],"response_size_bytes":66,"response_body_json":"{\"ok\":true}","client_ip":"203.0.113.10","client_country_iso_code":"DE","custom_attributes":{"tenant.id":"acme"},"trace_id":"0123456789abcdef0123456789abcdef","exception":null,"logs":[{"timestamp":"2026-01-01T00:15:00.100Z","message":"handling request","level":"INFO","logger":"app","file":"main.py","line":42}],"spans":[{"span_id":"0123456789abcdef","parent_span_id":null,"name":"GET /test/1","kind":"SERVER","start_time_ns":1767226500000000000,"end_time_ns":1767226500050000000,"duration_ns":50000000,"status":"OK","attributes":{"http.method":"GET"}}]}
 ```
 
 ## `traces`
