@@ -14,6 +14,7 @@ use regex::Regex;
 use crate::utils::{ansi, auth_err};
 
 const DEFAULT_API_BASE_URL: &str = "https://api.apitally.io";
+const MAX_CALLBACK_REQUEST_SIZE: u64 = 64 * 1024;
 
 #[derive(Serialize, Deserialize)]
 pub struct AuthConfig {
@@ -126,10 +127,29 @@ pub fn run(
 }
 
 fn browser_auth(app_url: &str, input: Option<Box<dyn Read + Send>>) -> Result<String> {
-    let listener =
-        TcpListener::bind("127.0.0.1:0").context("failed to start local callback server")?;
-    let port = listener.local_addr()?.port();
-    let url = format!("{app_url}/cli-auth?callback_port={port}");
+    // Over SSH, the browser runs on another machine and cannot reach the callback server
+    let ssh_session = ["SSH_CONNECTION", "SSH_TTY"]
+        .iter()
+        .any(|name| std::env::var_os(name).is_some_and(|value| !value.is_empty()));
+    if ssh_session && input.is_none() {
+        return Err(auth_err(
+            "browser auth over SSH requires an interactive terminal.\n\n\
+             Provide the API key with --api-key or APITALLY_API_KEY instead",
+        ));
+    }
+
+    let listener = if ssh_session {
+        None
+    } else {
+        Some(TcpListener::bind("127.0.0.1:0").context("failed to start local callback server")?)
+    };
+    let url = match &listener {
+        Some(listener) => {
+            let port = listener.local_addr()?.port();
+            format!("{app_url}/cli-auth?callback_port={port}&callback_mode=form")
+        }
+        None => format!("{app_url}/cli-auth"),
+    };
 
     #[cfg(not(test))]
     let _ = open::that(&url);
@@ -148,8 +168,10 @@ fn browser_auth(app_url: &str, input: Option<Box<dyn Read + Send>>) -> Result<St
         thread::spawn(move || read_stdin(tx_stdin, input));
     }
 
-    let app_url = app_url.to_string();
-    thread::spawn(move || run_callback_server(listener, tx, &app_url));
+    if let Some(listener) = listener {
+        let app_url = app_url.to_string();
+        thread::spawn(move || run_callback_server(listener, tx, &app_url));
+    }
 
     let api_key = rx.recv_timeout(Duration::from_secs(300)).map_err(|_| {
         eprintln!("\n");
@@ -184,52 +206,48 @@ fn handle_callback_request(stream: &mut TcpStream, app_url: &str) -> Option<Stri
     stream
         .set_read_timeout(Some(std::time::Duration::from_secs(1)))
         .ok();
-    let mut buf = [0u8; 4096];
-    let n = stream.read(&mut buf).ok()?;
-    let request = std::str::from_utf8(&buf[..n]).ok()?;
+    let mut reader = io::BufReader::new(Read::take(&*stream, MAX_CALLBACK_REQUEST_SIZE));
 
-    if request.starts_with("OPTIONS ") {
-        let response = format!(
-            "HTTP/1.1 204 No Content\r\n\
-            Access-Control-Allow-Origin: {app_url}\r\n\
-            Access-Control-Allow-Methods: POST\r\n\
-            Access-Control-Allow-Headers: Content-Type\r\n\
-            Content-Length: 0\r\n\
-            \r\n"
-        );
-        stream.write_all(response.as_bytes()).ok();
+    let mut request_line = String::new();
+    reader.read_line(&mut request_line).ok()?;
+    if !request_line.starts_with("POST ") {
         return None;
     }
 
-    if request.starts_with("POST ") {
-        let api_key = request
-            .split("\r\n\r\n")
-            .nth(1)
-            .and_then(|body| serde_json::from_str::<serde_json::Value>(body).ok())
-            .and_then(|parsed| parsed["api_key"].as_str().map(String::from));
-
-        if let Some(api_key) = api_key {
-            let response = format!(
-                "HTTP/1.1 200 OK\r\n\
-                Access-Control-Allow-Origin: {app_url}\r\n\
-                Content-Length: 0\r\n\
-                \r\n"
-            );
-            stream.write_all(response.as_bytes()).ok();
-            return Some(api_key);
+    let mut content_length = 0;
+    loop {
+        let mut line = String::new();
+        reader.read_line(&mut line).ok()?;
+        let line = line.trim_end();
+        if line.is_empty() {
+            break;
         }
-
-        let response = format!(
-            "HTTP/1.1 400 Bad Request\r\n\
-            Access-Control-Allow-Origin: {app_url}\r\n\
-            Content-Length: 0\r\n\
-            \r\n"
-        );
-        stream.write_all(response.as_bytes()).ok();
+        if let Some((name, value)) = line.split_once(':')
+            && name.eq_ignore_ascii_case("content-length")
+        {
+            content_length = value.trim().parse().ok()?;
+        }
+    }
+    if content_length > MAX_CALLBACK_REQUEST_SIZE {
         return None;
     }
+    let mut body = vec![0u8; content_length as usize];
+    reader.read_exact(&mut body).ok()?;
 
-    None
+    let api_key = form_urlencoded::parse(&body)
+        .find(|(name, _)| name == "api_key")
+        .map(|(_, value)| value.into_owned());
+    let response = match api_key {
+        Some(_) => format!(
+            "HTTP/1.1 303 See Other\r\n\
+            Location: {app_url}/cli-auth/success\r\n\
+            Content-Length: 0\r\n\
+            \r\n"
+        ),
+        None => "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n".to_string(),
+    };
+    stream.write_all(response.as_bytes()).ok();
+    api_key
 }
 
 #[cfg(test)]
@@ -327,21 +345,10 @@ mod tests {
         let app_url_owned = app_url.to_string();
         thread::spawn(move || run_callback_server(listener, tx, &app_url_owned));
 
-        // Send CORS preflight
-        let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
-        stream
-            .write_all(b"OPTIONS /callback HTTP/1.1\r\nOrigin: https://app.apitally.io\r\n\r\n")
-            .unwrap();
-        let mut response = vec![0u8; 1024];
-        let n = stream.read(&mut response).unwrap();
-        let response_str = std::str::from_utf8(&response[..n]).unwrap();
-        assert!(response_str.contains("204"));
-        assert!(response_str.contains(&format!("Access-Control-Allow-Origin: {app_url}")));
-
-        // Send callback POST with invalid data
-        let body = r#"{"invalid":"data"}"#;
+        // Send form POST without api_key
+        let body = "other=value";
         let request = format!(
-            "POST /callback HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+            "POST /callback HTTP/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\n\r\n{}",
             body.len(),
             body
         );
@@ -350,22 +357,24 @@ mod tests {
         let mut response = vec![0u8; 1024];
         let n = stream.read(&mut response).unwrap();
         let response_str = std::str::from_utf8(&response[..n]).unwrap();
-        assert!(response_str.contains("400"));
-        assert!(response_str.contains(&format!("Access-Control-Allow-Origin: {app_url}")));
+        assert!(response_str.starts_with("HTTP/1.1 400"));
 
-        // Send callback POST with valid api_key
-        let body = format!(r#"{{"api_key":"{TEST_API_KEY}"}}"#);
-        let request = format!(
-            "POST /callback HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
-            body.len(),
-            body
+        // Send form POST with valid api_key, with headers and body written separately
+        let body = format!("api_key={TEST_API_KEY}");
+        let headers = format!(
+            "POST /callback HTTP/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\n\r\n",
+            body.len()
         );
         let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
-        stream.write_all(request.as_bytes()).unwrap();
+        stream.write_all(headers.as_bytes()).unwrap();
+        stream.flush().unwrap();
+        thread::sleep(Duration::from_millis(50));
+        stream.write_all(body.as_bytes()).unwrap();
         let mut response = vec![0u8; 1024];
         let n = stream.read(&mut response).unwrap();
         let response_str = std::str::from_utf8(&response[..n]).unwrap();
-        assert!(response_str.contains("200"));
+        assert!(response_str.starts_with("HTTP/1.1 303"));
+        assert!(response_str.contains(&format!("Location: {app_url}/cli-auth/success\r\n")));
 
         let api_key = rx.recv_timeout(Duration::from_secs(5)).unwrap();
         assert_eq!(api_key, TEST_API_KEY);

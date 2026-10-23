@@ -107,6 +107,7 @@ dependencies = [
  "clap",
  "dirs",
  "duckdb",
+ "form_urlencoded",
  "iana-time-zone",
  "mockito",
  "open",

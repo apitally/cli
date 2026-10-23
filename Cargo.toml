@@ -22,6 +22,7 @@ duckdb = { git = "https://github.com/duckdb/duckdb-rs", tag = "v1.10505.0", feat
     "json",
     "appender-arrow",
 ] }
+form_urlencoded = "1"
 iana-time-zone = "0.1"
 open = "5"
 regex = "1"
