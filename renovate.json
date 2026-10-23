@@ -4,7 +4,7 @@
   "packageRules": [
     {
       "matchManagers": ["cargo"],
-      "matchPackageNames": ["duckdb", "arrow", "arrow-ipc"],
+      "matchDepNames": ["duckdb", "arrow", "arrow-ipc"],
       "groupName": "duckdb and arrow"
     },
     {

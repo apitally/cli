@@ -151,12 +151,12 @@ npx @apitally/cli request-details <app-id> <request-uuid>
 
 ### Discover slow spans and expand a trace
 
-The examples below use app `1` and a sample trace ID; substitute IDs from your results. Discover spans taking at least 100 ms. SQL time bounds use epoch nanoseconds because the bundled DuckDB does not support `TIMESTAMPTZ - INTERVAL` (24 hours = 86400000000000 ns):
+The examples below use app `1` and a sample trace ID; substitute IDs from your results. Discover spans taking at least 100 ms:
 
 ```bash
 npx @apitally/cli traces 1 --since 24h \
   --filters '[{"field":"duration_ns","op":"gte","value":100000000}]' --db
-npx @apitally/cli sql "SELECT trace_id, span_id, name, duration_ns / 1000000.0 AS duration_ms FROM spans WHERE app_id = 1 AND start_time_ns >= epoch_ns(current_timestamp) - 86400000000000 AND duration_ns >= 100000000 ORDER BY duration_ns DESC LIMIT 20"
+npx @apitally/cli sql "SELECT trace_id, span_id, name, duration_ns / 1000000.0 AS duration_ms FROM spans WHERE app_id = 1 AND start_time_ns >= epoch_ns(now() - INTERVAL 1 DAY) AND duration_ns >= 100000000 ORDER BY duration_ns DESC LIMIT 20"
 ```
 
 Fetch all available spans for a discovered trace ID. Keep only the trace-ID filter, remove sampling and time bounds, and select the fields needed for the investigation. `--fields` replaces defaults, so this example lists all fields:
@@ -177,7 +177,7 @@ Find request trace IDs, then expand them using the trace-ID fetch above:
 ```bash
 npx @apitally/cli request-logs 1 --since 24h \
   --fields 'status_code,response_time_ms' --db
-npx @apitally/cli sql "SELECT request_uuid, trace_id, status_code, response_time_ms FROM request_logs WHERE app_id = 1 AND epoch_ns(timestamp) >= epoch_ns(current_timestamp) - 86400000000000 AND trace_id IS NOT NULL ORDER BY response_time_ms DESC LIMIT 20"
+npx @apitally/cli sql "SELECT request_uuid, trace_id, status_code, response_time_ms FROM request_logs WHERE app_id = 1 AND timestamp >= now() - INTERVAL 1 DAY AND trace_id IS NOT NULL ORDER BY response_time_ms DESC LIMIT 20"
 ```
 
 Join on **both app and trace IDs**, not request UUID:
@@ -259,10 +259,10 @@ See [references/duckdb_json_functions.md](references/duckdb_json_functions.md) f
 
 ### Date truncation and grouping
 
-Datetime columns are `TIMESTAMPTZ`. Direct casts like `timestamp::DATE` error out (no ICU extension). Use `AT TIME ZONE 'UTC'` first:
+Datetime columns are `TIMESTAMPTZ`. The session time zone is UTC, so date functions and casts like `timestamp::DATE` use UTC boundaries:
 
 ```sql
-SELECT date_trunc('day', timestamp AT TIME ZONE 'UTC') AS day, count(*) AS n
+SELECT date_trunc('day', timestamp) AS day, count(*) AS n
 FROM request_logs WHERE app_id = <app-id> AND timestamp >= '<since>'
 GROUP BY day ORDER BY day
 ```
