@@ -63,7 +63,7 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
      npx @apitally/cli endpoints <app-id> [--method <methods>] [--path <pattern>]
      ```
 
-   - **Consumers**: use `consumers` to map identifiers (emails, usernames, groups) to `consumer_id` values and vice versa, if the question involves consumers.
+   - **Consumers**: use `consumers` to map identifiers (emails, usernames, groups, attributes) to `consumer_id` values and vice versa, if the question involves consumers.
 
      ```
      npx @apitally/cli consumers <app-id> [--requests-since "<since>"] --db
@@ -71,6 +71,10 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
 
      ```
      npx @apitally/cli sql "SELECT consumer_id, identifier, name, \"group\" FROM consumers WHERE app_id = <app-id> AND identifier ILIKE '%@example.com'"
+     ```
+
+     ```
+     npx @apitally/cli sql "SELECT consumer_id, identifier, name FROM consumers WHERE app_id = <app-id> AND attributes->>'$.plan' = 'pro'"
      ```
 
 4. **Fetch data** — choose based on the question. Always read the [command reference](references/commands.md) for available options.
