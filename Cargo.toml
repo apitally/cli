@@ -16,7 +16,7 @@ arrow-ipc = { version = "=58.4.0", features = ["lz4"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 clap = { version = "4", features = ["derive", "env"] }
 dirs = "6"
-duckdb = { git = "https://github.com/duckdb/duckdb-rs", tag = "v1.10505.0", features = [
+duckdb = { git = "https://github.com/duckdb/duckdb-rs", tag = "v1.10506.1", features = [
     "bundled-cmake",
     "icu",
     "json",
