@@ -9,7 +9,7 @@
 ```
 src/
   main.rs               Entry point, CLI argument parsing (clap), command dispatch
-  auth.rs               Authentication config (load/save/resolve) + auth command
+  auth.rs               Authentication config (load/save/resolve) + auth command (device flow via /v1/cli-auth/*)
   whoami.rs             Whoami command (auth check, team info)
   apps.rs               Apps command (fetch, DB write)
   consumers.rs          Consumers command (paginated fetch, DB write)
@@ -41,18 +41,18 @@ skills/
 
 ## CLI Subcommands
 
-| Subcommand        | Data source                                         |
-| ----------------- | --------------------------------------------------- |
-| `auth`            | —                                                   |
-| `whoami`          | `GET /v1/team`                                      |
-| `apps`            | `GET /v1/apps`                                      |
-| `consumers`       | `GET /v1/apps/{app_id}/consumers`                   |
-| `endpoints`       | `GET /v1/apps/{app_id}/endpoints`                   |
-| `metrics`         | `POST /v1/apps/{app_id}/metrics`                    |
-| `request-logs`    | `POST /v1/apps/{app_id}/request-logs`               |
-| `traces`          | `POST /v1/apps/{app_id}/traces`                     |
-| `request-details` | `GET /v1/apps/{app_id}/request-logs/{request_uuid}` |
-| `sql`             | Local DuckDB                                        |
+| Subcommand        | Data source                                             |
+| ----------------- | ------------------------------------------------------- |
+| `auth`            | `POST /v1/cli-auth/sessions`, `POST /v1/cli-auth/token` |
+| `whoami`          | `GET /v1/team`                                          |
+| `apps`            | `GET /v1/apps`                                          |
+| `consumers`       | `GET /v1/apps/{app_id}/consumers`                       |
+| `endpoints`       | `GET /v1/apps/{app_id}/endpoints`                       |
+| `metrics`         | `POST /v1/apps/{app_id}/metrics`                        |
+| `request-logs`    | `POST /v1/apps/{app_id}/request-logs`                   |
+| `traces`          | `POST /v1/apps/{app_id}/traces`                         |
+| `request-details` | `GET /v1/apps/{app_id}/request-logs/{request_uuid}`     |
+| `sql`             | Local DuckDB                                            |
 
 ## Authentication with API
 
@@ -94,7 +94,7 @@ Triggered by publishing a GitHub release. Two jobs:
 
 ### Module `run()` functions
 
-Each command module exposes a `pub fn run(...)` that does all the work: resolve auth, call the API, write output. The last parameter is `impl Write` (stdout in production, `Vec<u8>` in tests), except `auth::run` which takes `&mut impl Read` (stdin) instead. Data goes to the writer (stdout), human messages and progress go to stderr.
+Each command module exposes a `pub fn run(...)` that does all the work: resolve auth, call the API, write output. The last parameter is `impl Write` (stdout in production, `Vec<u8>` in tests), except `auth::run`, which writes only to stderr and takes the `auth.json` path instead. Data goes to the writer (stdout), human messages and progress go to stderr.
 
 ### Error handling and exit codes
 

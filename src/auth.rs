@@ -1,17 +1,14 @@
 use std::fs;
-use std::io::{self, BufRead, Read, Write};
-use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 use regex::Regex;
 
-use crate::utils::{ansi, auth_err};
+use crate::utils::{ansi, api_post_without_key, auth_err};
 
 const DEFAULT_API_BASE_URL: &str = "https://api.apitally.io";
 
@@ -20,6 +17,20 @@ pub struct AuthConfig {
     pub api_key: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_base_url: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct CliAuthSessionResponse {
+    device_code: String,
+    user_code: String,
+    verification_url: String,
+    expires_in: u64,
+    interval: u64,
+}
+
+#[derive(Deserialize)]
+struct CliAuthTokenResponse {
+    api_key: String,
 }
 
 pub fn auth_file_path() -> Result<PathBuf> {
@@ -105,13 +116,11 @@ pub fn resolve_api_base_url(api_base_url: Option<&str>) -> String {
 pub fn run(
     api_key: Option<String>,
     api_base_url: Option<String>,
-    app_url: &str,
     auth_file_path: &Path,
-    input: Option<Box<dyn Read + Send>>,
 ) -> Result<()> {
     let api_key = match api_key {
         Some(key) => key,
-        None => browser_auth(app_url, input)?,
+        None => browser_auth(&pick_api_base_url(api_base_url.as_deref(), None))?,
     };
     validate_api_key(&api_key)?;
     save_auth_file(
@@ -125,111 +134,52 @@ pub fn run(
     Ok(())
 }
 
-fn browser_auth(app_url: &str, input: Option<Box<dyn Read + Send>>) -> Result<String> {
-    let listener =
-        TcpListener::bind("127.0.0.1:0").context("failed to start local callback server")?;
-    let port = listener.local_addr()?.port();
-    let url = format!("{app_url}/cli-auth?callback_port={port}");
+fn browser_auth(api_base_url: &str) -> Result<String> {
+    let url = format!("{api_base_url}/v1/cli-auth/sessions");
+    let mut response = api_post_without_key(&url, &serde_json::json!({}))?;
+    let session: CliAuthSessionResponse = response.body_mut().read_json()?;
+
+    eprintln!("Opening browser with URL: {}\n", session.verification_url);
+    eprintln!(
+        "Confirm that the browser shows this code: {}\n",
+        session.user_code
+    );
 
     #[cfg(not(test))]
-    let _ = open::that(&url);
+    let _ = open::that(&session.verification_url);
 
-    eprintln!("Opening browser with URL: {url}\n");
-    eprintln!("Complete the auth flow in the browser.");
-    if input.is_some() {
-        eprint!("Or paste your API key and press Enter: ");
-    }
-    io::stderr().flush()?;
-
-    let (tx, rx) = mpsc::channel();
-
-    if let Some(input) = input {
-        let tx_stdin = tx.clone();
-        thread::spawn(move || read_stdin(tx_stdin, input));
-    }
-
-    let app_url = app_url.to_string();
-    thread::spawn(move || run_callback_server(listener, tx, &app_url));
-
-    let api_key = rx.recv_timeout(Duration::from_secs(300)).map_err(|_| {
-        eprintln!("\n");
-        auth_err("authentication timed out")
-    })?;
-    Ok(api_key)
-}
-
-fn read_stdin(tx: mpsc::Sender<String>, input: Box<dyn Read + Send>) {
-    let mut line = String::new();
-    if io::BufReader::new(input).read_line(&mut line).is_ok() {
-        let key = line.trim().to_string();
-        if !key.is_empty() {
-            eprintln!();
-            let _ = tx.send(key);
+    let token_url = format!("{api_base_url}/v1/cli-auth/token");
+    let body = serde_json::json!({ "device_code": session.device_code });
+    let deadline = Instant::now() + Duration::from_secs(session.expires_in);
+    while Instant::now() < deadline {
+        thread::sleep(Duration::from_secs(session.interval));
+        let Ok(mut response) = ureq::post(&token_url)
+            .config()
+            .http_status_as_error(false)
+            .timeout_connect(Some(Duration::from_secs(5)))
+            .timeout_recv_response(Some(Duration::from_secs(15)))
+            .build()
+            .send_json(&body)
+        else {
+            continue;
+        };
+        match response.status().as_u16() {
+            200 => {
+                return Ok(response
+                    .body_mut()
+                    .read_json::<CliAuthTokenResponse>()?
+                    .api_key);
+            }
+            429 => {}
+            400..=499 => {
+                return Err(auth_err(
+                    "authentication expired, run `apitally auth` again",
+                ));
+            }
+            _ => {}
         }
     }
-}
-
-fn run_callback_server(listener: TcpListener, tx: mpsc::Sender<String>, app_url: &str) {
-    listener.set_nonblocking(false).ok();
-    while let Ok((mut stream, _)) = listener.accept() {
-        if let Some(api_key) = handle_callback_request(&mut stream, app_url) {
-            eprintln!("\n");
-            let _ = tx.send(api_key);
-            return;
-        }
-    }
-}
-
-fn handle_callback_request(stream: &mut TcpStream, app_url: &str) -> Option<String> {
-    stream
-        .set_read_timeout(Some(std::time::Duration::from_secs(1)))
-        .ok();
-    let mut buf = [0u8; 4096];
-    let n = stream.read(&mut buf).ok()?;
-    let request = std::str::from_utf8(&buf[..n]).ok()?;
-
-    if request.starts_with("OPTIONS ") {
-        let response = format!(
-            "HTTP/1.1 204 No Content\r\n\
-            Access-Control-Allow-Origin: {app_url}\r\n\
-            Access-Control-Allow-Methods: POST\r\n\
-            Access-Control-Allow-Headers: Content-Type\r\n\
-            Content-Length: 0\r\n\
-            \r\n"
-        );
-        stream.write_all(response.as_bytes()).ok();
-        return None;
-    }
-
-    if request.starts_with("POST ") {
-        let api_key = request
-            .split("\r\n\r\n")
-            .nth(1)
-            .and_then(|body| serde_json::from_str::<serde_json::Value>(body).ok())
-            .and_then(|parsed| parsed["api_key"].as_str().map(String::from));
-
-        if let Some(api_key) = api_key {
-            let response = format!(
-                "HTTP/1.1 200 OK\r\n\
-                Access-Control-Allow-Origin: {app_url}\r\n\
-                Content-Length: 0\r\n\
-                \r\n"
-            );
-            stream.write_all(response.as_bytes()).ok();
-            return Some(api_key);
-        }
-
-        let response = format!(
-            "HTTP/1.1 400 Bad Request\r\n\
-            Access-Control-Allow-Origin: {app_url}\r\n\
-            Content-Length: 0\r\n\
-            \r\n"
-        );
-        stream.write_all(response.as_bytes()).ok();
-        return None;
-    }
-
-    None
+    Err(auth_err("authentication timed out"))
 }
 
 #[cfg(test)]
@@ -295,9 +245,7 @@ mod tests {
         run(
             Some(TEST_API_KEY.into()),
             Some("https://custom.api".into()),
-            "https://app.apitally.io",
             &path,
-            None,
         )
         .unwrap();
         let config = load_auth_file(&path).unwrap().unwrap();
@@ -306,69 +254,53 @@ mod tests {
     }
 
     #[test]
-    fn test_run_with_stdin() {
+    fn test_run_with_polling() {
+        let mut server = mockito::Server::new();
+        let sessions_mock = server
+            .mock("POST", "/v1/cli-auth/sessions")
+            .with_status(201)
+            .with_header("content-type", "application/json")
+            .with_body(
+                serde_json::json!({
+                    "device_code": "test-device-code",
+                    "user_code": "WDJB-MJHT",
+                    "verification_url": "https://app.apitally.io/cli-auth?code=WDJB-MJHT",
+                    "expires_in": 600,
+                    "interval": 0,
+                })
+                .to_string(),
+            )
+            .create();
+        let pending_mock = server
+            .mock("POST", "/v1/cli-auth/token")
+            .match_body(mockito::Matcher::Json(
+                serde_json::json!({"device_code": "test-device-code"}),
+            ))
+            .with_status(202)
+            .with_body("{}")
+            .expect(1)
+            .create();
+        let approved_mock = server
+            .mock("POST", "/v1/cli-auth/token")
+            .match_body(mockito::Matcher::Json(
+                serde_json::json!({"device_code": "test-device-code"}),
+            ))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(format!(r#"{{"api_key":"{TEST_API_KEY}"}}"#))
+            .expect(1)
+            .create();
+
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("auth.json");
-        let input: Box<dyn Read + Send> =
-            Box::new(io::Cursor::new(format!("{TEST_API_KEY}\n").into_bytes()));
-        run(None, None, "https://app.apitally.io", &path, Some(input)).unwrap();
+        run(None, Some(server.url()), &path).unwrap();
+        sessions_mock.assert();
+        pending_mock.assert();
+        approved_mock.assert();
+
         let config = load_auth_file(&path).unwrap().unwrap();
         assert_eq!(config.api_key, TEST_API_KEY);
-        assert!(config.api_base_url.is_none());
-    }
-
-    #[test]
-    fn test_run_with_callback() {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-
-        let (tx, rx) = mpsc::channel();
-        let app_url = "https://app.apitally.io";
-        let app_url_owned = app_url.to_string();
-        thread::spawn(move || run_callback_server(listener, tx, &app_url_owned));
-
-        // Send CORS preflight
-        let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
-        stream
-            .write_all(b"OPTIONS /callback HTTP/1.1\r\nOrigin: https://app.apitally.io\r\n\r\n")
-            .unwrap();
-        let mut response = vec![0u8; 1024];
-        let n = stream.read(&mut response).unwrap();
-        let response_str = std::str::from_utf8(&response[..n]).unwrap();
-        assert!(response_str.contains("204"));
-        assert!(response_str.contains(&format!("Access-Control-Allow-Origin: {app_url}")));
-
-        // Send callback POST with invalid data
-        let body = r#"{"invalid":"data"}"#;
-        let request = format!(
-            "POST /callback HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
-            body.len(),
-            body
-        );
-        let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
-        stream.write_all(request.as_bytes()).unwrap();
-        let mut response = vec![0u8; 1024];
-        let n = stream.read(&mut response).unwrap();
-        let response_str = std::str::from_utf8(&response[..n]).unwrap();
-        assert!(response_str.contains("400"));
-        assert!(response_str.contains(&format!("Access-Control-Allow-Origin: {app_url}")));
-
-        // Send callback POST with valid api_key
-        let body = format!(r#"{{"api_key":"{TEST_API_KEY}"}}"#);
-        let request = format!(
-            "POST /callback HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
-            body.len(),
-            body
-        );
-        let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
-        stream.write_all(request.as_bytes()).unwrap();
-        let mut response = vec![0u8; 1024];
-        let n = stream.read(&mut response).unwrap();
-        let response_str = std::str::from_utf8(&response[..n]).unwrap();
-        assert!(response_str.contains("200"));
-
-        let api_key = rx.recv_timeout(Duration::from_secs(5)).unwrap();
-        assert_eq!(api_key, TEST_API_KEY);
+        assert_eq!(config.api_base_url, Some(server.url()));
     }
 
     #[test]
