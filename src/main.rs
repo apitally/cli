@@ -11,7 +11,7 @@ mod traces;
 mod utils;
 mod whoami;
 
-use std::io::{IsTerminal, Read};
+use std::io::Read;
 use std::path::PathBuf;
 
 use anyhow::Result;
@@ -48,15 +48,6 @@ enum Command {
     Auth {
         #[command(flatten)]
         api: ApiArgs,
-
-        /// URL of the Apitally dashboard (for browser-based auth)
-        #[arg(
-            long,
-            env = "APITALLY_APP_URL",
-            default_value = "https://app.apitally.io",
-            hide = true
-        )]
-        app_url: String,
     },
 
     /// Show the authenticated team
@@ -495,20 +486,7 @@ fn exit_code(err: &anyhow::Error) -> i32 {
 
 fn run(cli: Cli) -> Result<()> {
     match cli.command {
-        Command::Auth { api, app_url } => {
-            let input = if std::io::stdin().is_terminal() {
-                Some(Box::new(std::io::stdin()) as Box<dyn std::io::Read + Send>)
-            } else {
-                None
-            };
-            auth::run(
-                api.api_key,
-                api.api_base_url,
-                &app_url,
-                &auth::auth_file_path()?,
-                input,
-            )
-        }
+        Command::Auth { api } => auth::run(api.api_key, api.api_base_url, &auth::auth_file_path()?),
         Command::Whoami { api } => whoami::run(
             api.api_key.as_deref(),
             api.api_base_url.as_deref(),

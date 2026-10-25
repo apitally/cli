@@ -61,7 +61,7 @@ Run the `auth` command to authenticate the CLI:
 npx @apitally/cli auth
 ```
 
-This opens a browser-based auth flow where you log in to the Apitally dashboard and select a team. A newly created API key is then passed back to the CLI and saved to `~/.apitally/auth.json`.
+This opens the Apitally dashboard in your browser, where you confirm the code shown in the terminal, select a team and choose the API key's scope. Once you approve the login, the CLI fetches a newly created API key and saves it to `~/.apitally/auth.json`.
 
 If you already have an API key, you can provide it directly:
 

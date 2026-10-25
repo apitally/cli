@@ -12,7 +12,7 @@ Datetime flags (e.g. `--since`, `--until`, `--requests-since`) accept ISO 8601 s
 npx @apitally/cli auth [--api-key <key>]
 ```
 
-Opens a browser-based auth flow where the user logs in to the Apitally dashboard and selects a team. A newly created API key is then passed back to the CLI. The key is saved to `~/.apitally/auth.json` and used by all subsequent commands unless overridden by the `--api-key` flag.
+Opens a browser-based auth flow where the user logs in to the Apitally dashboard, confirms the code shown in the terminal, and picks a team and a scope (read-only or read & write). The CLI then fetches the newly created API key. The key is saved to `~/.apitally/auth.json` and used by all subsequent commands unless overridden by the `--api-key` flag.
 
 If `--api-key` is provided, the key is saved directly without opening the browser.
 

@@ -143,6 +143,19 @@ pub fn api_post(url: &str, api_key: &str, body: &serde_json::Value) -> Result<Re
     Ok(response)
 }
 
+pub fn api_post_without_key(url: &str, body: &serde_json::Value) -> Result<Response<Body>> {
+    let mut response = ureq::post(url)
+        .config()
+        .http_status_as_error(false)
+        .timeout_connect(Some(Duration::from_secs(5)))
+        .timeout_recv_response(Some(Duration::from_secs(15)))
+        .build()
+        .send_json(body)
+        .map_err(|e| api_err(e.to_string()))?;
+    check_response(&mut response)?;
+    Ok(response)
+}
+
 fn check_response(response: &mut Response<Body>) -> Result<()> {
     let status = response.status().as_u16();
     if status >= 400 {
