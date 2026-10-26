@@ -3,7 +3,7 @@ use std::path::Path;
 
 use anyhow::Result;
 use duckdb::arrow::ipc::reader::StreamReader;
-use duckdb::vtab::arrow::{ArrowVTab, arrow_recordbatch_to_query_params};
+use duckdb::vtab::arrow::{ArrowBatchRegistration, ArrowVTab};
 
 use crate::auth::{resolve_api_base_url, resolve_api_key};
 use crate::utils::{api_post, input_err, open_db, parse_string_list, resolve_relative_datetime};
@@ -106,7 +106,7 @@ pub fn run(
             .join(", ");
         let insert_sql = format!(
             "INSERT INTO metrics_staging (app_id, {col_list}) \
-             SELECT {app_id}, {col_list} FROM arrow(?, ?)"
+             SELECT {app_id}, {col_list} FROM arrow(?)"
         );
 
         let mut total = 0usize;
@@ -119,8 +119,8 @@ pub fn run(
         for batch in reader {
             let batch = batch?;
             total += batch.num_rows();
-            let params = arrow_recordbatch_to_query_params(batch);
-            conn.execute(&insert_sql, params)?;
+            let registration = ArrowBatchRegistration::new(batch);
+            conn.execute(&insert_sql, [&registration])?;
             eprint!(
                 "\r{total} metrics rows written to table 'metrics' in {}...",
                 db_path.display()
