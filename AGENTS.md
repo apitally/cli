@@ -68,8 +68,6 @@ The API base URL follows the same pattern: `--api-base-url` flag > `APITALLY_API
 
 ## Common Commands
 
-Building requires CMake, because DuckDB is compiled from source with the ICU extension.
-
 ```bash
 cargo build              # Build (debug)
 cargo build --release    # Build (release, optimized)
@@ -78,6 +76,11 @@ cargo test               # Run tests
 cargo clippy             # Lint
 cargo fmt                # Format code
 ```
+
+## Building
+
+- CMake is required to compile DuckDB from source with the ICU extension.
+- Linux ARM64 builds also require LLD. `.cargo/config.toml` selects it to resolve references between DuckDB's static extension archives.
 
 ## Distribution
 

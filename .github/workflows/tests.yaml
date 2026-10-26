@@ -26,6 +26,7 @@ jobs:
           filters: |
             rust:
               - ".github/workflows/tests.yaml"
+              - ".cargo/**"
               - "Cargo.lock"
               - "Cargo.toml"
               - "npm/**"
