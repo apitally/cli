@@ -112,6 +112,7 @@ Fetch aggregated metrics for an app. Outputs NDJSON to stdout by default.
 | --------------------- | ------- | -------------------------------------- |
 | `requests`            | integer | Total request count                    |
 | `requests_per_minute` | float   | Requests per minute                    |
+| `consumers`           | integer | Number of distinct consumers           |
 | `bytes_received`      | integer | Total bytes received                   |
 | `bytes_sent`          | integer | Total bytes sent                       |
 | `client_errors`       | integer | 4xx errors (excluding expected errors) |

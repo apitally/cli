@@ -78,7 +78,7 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
      ```
 
 4. **Fetch data** — choose based on the question. Always read the [command reference](references/commands.md) for available options.
-   - **Metrics** — for questions that can be answered with aggregated metrics: traffic volume, error rates, response time trends, throughput, endpoint comparisons. Use `--group-by` and `--interval` to break down by environment, endpoint, consumer, status code, or time period.
+   - **Metrics** — for questions that can be answered with aggregated metrics: traffic volume, error rates, response time trends, throughput, distinct consumers, endpoint comparisons. Use `--group-by` and `--interval` to break down by environment, endpoint, consumer, status code, or time period.
 
      ```
      npx @apitally/cli metrics <app-id> --since "<since>" \
