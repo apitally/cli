@@ -71,7 +71,7 @@ CREATE TABLE metrics (
     status_code         INTEGER,
     requests            BIGINT,
     requests_per_minute DOUBLE,
-    consumers           BIGINT,              -- distinct count, can't be summed across periods or groups
+    consumers           BIGINT,
     bytes_received      BIGINT,
     bytes_sent          BIGINT,
     client_errors       BIGINT,
