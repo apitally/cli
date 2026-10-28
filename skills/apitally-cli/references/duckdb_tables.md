@@ -71,6 +71,7 @@ CREATE TABLE metrics (
     status_code         INTEGER,
     requests            BIGINT,
     requests_per_minute DOUBLE,
+    consumers           BIGINT,              -- distinct count, can't be summed across periods or groups
     bytes_received      BIGINT,
     bytes_sent          BIGINT,
     client_errors       BIGINT,
@@ -80,8 +81,7 @@ CREATE TABLE metrics (
     response_time_p75   INTEGER,             -- milliseconds
     response_time_p90   INTEGER,             -- milliseconds
     response_time_p95   INTEGER,             -- milliseconds
-    response_time_p99   INTEGER,             -- milliseconds
-    consumers           BIGINT               -- distinct count, can't be summed across periods or groups
+    response_time_p99   INTEGER              -- milliseconds
 );
 ```
 

@@ -112,6 +112,7 @@ Fetch aggregated metrics for an app. Outputs NDJSON to stdout by default.
 | --------------------- | ------- | ------------------------------------------------------------------------------------------ |
 | `requests`            | integer | Total request count                                                                        |
 | `requests_per_minute` | float   | Requests per minute                                                                        |
+| `consumers`           | integer | Number of distinct consumers. Can't be summed across periods or groups (consumers overlap) |
 | `bytes_received`      | integer | Total bytes received                                                                       |
 | `bytes_sent`          | integer | Total bytes sent                                                                           |
 | `client_errors`       | integer | 4xx errors (excluding expected errors)                                                     |
@@ -122,7 +123,6 @@ Fetch aggregated metrics for an app. Outputs NDJSON to stdout by default.
 | `response_time_p90`   | integer | 90th percentile response time (ms)                                                         |
 | `response_time_p95`   | integer | 95th percentile response time (ms)                                                         |
 | `response_time_p99`   | integer | 99th percentile response time (ms)                                                         |
-| `consumers`           | integer | Number of distinct consumers. Can't be summed across periods or groups (consumers overlap) |
 
 ### Group-by fields
 

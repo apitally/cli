@@ -140,8 +140,8 @@ enum Command {
 
         /// JSON array or comma-separated list of metric names to include
         ///
-        /// Available metrics: requests, requests_per_minute, bytes_received, bytes_sent, client_errors, server_errors, error_rate,
-        /// response_time_p50, response_time_p75, response_time_p90, response_time_p95, response_time_p99, consumers.
+        /// Available metrics: requests, requests_per_minute, consumers, bytes_received, bytes_sent, client_errors, server_errors,
+        /// error_rate, response_time_p50, response_time_p75, response_time_p90, response_time_p95, response_time_p99.
         /// The consumers metric is a distinct count and can't be summed across periods or groups.
         #[arg(long)]
         metrics: String,
