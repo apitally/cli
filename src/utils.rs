@@ -62,34 +62,38 @@ pub fn open_db(path: &Path) -> Result<duckdb::Connection> {
 }
 
 /// If `s` is a compact duration string (`<digits><m|h|d|w>`, e.g. `24h` or `7d`) or a simple
-/// ISO 8601-style duration (`P14D`, `-P14D`, `PT24H`), returns the UTC instant that far in the
-/// past as RFC 3339. Otherwise returns `s` unchanged.
+/// ISO 8601 duration with a single month, week, day, hour or minute component (`P1M`, `P14D`,
+/// `-P2W`, `PT24H`, `PT30M`), returns the UTC instant that far in the past as RFC 3339. A month
+/// counts as 30 days. Otherwise returns `s` unchanged.
 pub fn resolve_relative_datetime(s: &str) -> String {
     let normalized = s.to_ascii_lowercase();
-    let normalized = normalized.trim_start_matches(['-', 'p', 't']);
-    let b = normalized.as_bytes();
-    if b.len() < 2 {
+    let normalized = normalized.strip_prefix('-').unwrap_or(&normalized);
+    let (designator, amount) = if let Some(amount) = normalized.strip_prefix("pt") {
+        ("pt", amount)
+    } else if let Some(amount) = normalized.strip_prefix('p') {
+        ("p", amount)
+    } else {
+        ("", normalized)
+    };
+    let Some(unit) = amount.bytes().last() else {
         return s.to_owned();
-    }
-    let unit = b[b.len() - 1];
-    if !matches!(unit, b'm' | b'h' | b'd' | b'w') {
-        return s.to_owned();
-    }
-    let prefix = &normalized[..normalized.len() - 1];
+    };
+    let seconds_per_unit = match (designator, unit) {
+        ("" | "pt", b'm') => 60,
+        ("" | "pt", b'h') => 3600,
+        ("" | "p", b'd') => 86_400,
+        ("" | "p", b'w') => 604_800,
+        ("p", b'm') => 30 * 86_400,
+        _ => return s.to_owned(),
+    };
+    let prefix = &amount[..amount.len() - 1];
     if prefix.is_empty() || !prefix.bytes().all(|c| c.is_ascii_digit()) {
         return s.to_owned();
     }
     let Ok(n) = prefix.parse::<i64>() else {
         return s.to_owned();
     };
-    let secs = match unit {
-        b'm' => n.checked_mul(60),
-        b'h' => n.checked_mul(3600),
-        b'd' => n.checked_mul(86_400),
-        b'w' => n.checked_mul(604_800),
-        _ => None,
-    };
-    let Some(secs) = secs else {
+    let Some(secs) = n.checked_mul(seconds_per_unit) else {
         return s.to_owned();
     };
     let duration = chrono::Duration::seconds(secs);
@@ -221,6 +225,13 @@ mod tests {
         assert_approximately_now_minus(&resolve_relative_datetime("PT24H"), 24 * 3600);
         assert_approximately_now_minus(&resolve_relative_datetime("PT30M"), 30 * 60);
         assert_approximately_now_minus(&resolve_relative_datetime("-PT30M"), 30 * 60);
+
+        assert_approximately_now_minus(&resolve_relative_datetime("P1M"), 30 * 86_400);
+        assert_approximately_now_minus(&resolve_relative_datetime("-P3M"), 90 * 86_400);
+
+        for unsupported in ["P1H", "PT1D", "TP1M", "T5M", "PP5M"] {
+            assert_eq!(resolve_relative_datetime(unsupported), unsupported);
+        }
     }
 
     #[test]
