@@ -66,14 +66,19 @@ pub fn open_db(path: &Path) -> Result<duckdb::Connection> {
 /// `-P2W`, `PT24H`, `PT30M`), returns the UTC instant that far in the past as RFC 3339. A month
 /// counts as 30 days. Otherwise returns `s` unchanged.
 pub fn resolve_relative_datetime(s: &str) -> String {
-    let normalized = s.to_ascii_lowercase();
-    let normalized = normalized.strip_prefix('-').unwrap_or(&normalized);
+    let unsigned = s.strip_prefix('-').unwrap_or(s);
+    // Compact units are lowercase only, so that 3M (often meant as months) is not read as 3 minutes
+    let normalized = if unsigned.starts_with(['p', 'P']) {
+        unsigned.to_ascii_lowercase()
+    } else {
+        unsigned.to_owned()
+    };
     let (designator, amount) = if let Some(amount) = normalized.strip_prefix("pt") {
         ("pt", amount)
     } else if let Some(amount) = normalized.strip_prefix('p') {
         ("p", amount)
     } else {
-        ("", normalized)
+        ("", normalized.as_str())
     };
     let Some(unit) = amount.bytes().last() else {
         return s.to_owned();
@@ -221,7 +226,7 @@ mod tests {
         assert_approximately_now_minus(&resolve_relative_datetime("P14D"), 14 * 86_400);
         assert_approximately_now_minus(&resolve_relative_datetime("-P14D"), 14 * 86_400);
         assert_approximately_now_minus(&resolve_relative_datetime("p14d"), 14 * 86_400);
-        assert_approximately_now_minus(&resolve_relative_datetime("-2H"), 2 * 3600);
+        assert_approximately_now_minus(&resolve_relative_datetime("-2h"), 2 * 3600);
         assert_approximately_now_minus(&resolve_relative_datetime("PT24H"), 24 * 3600);
         assert_approximately_now_minus(&resolve_relative_datetime("PT30M"), 30 * 60);
         assert_approximately_now_minus(&resolve_relative_datetime("-PT30M"), 30 * 60);
@@ -229,7 +234,7 @@ mod tests {
         assert_approximately_now_minus(&resolve_relative_datetime("P1M"), 30 * 86_400);
         assert_approximately_now_minus(&resolve_relative_datetime("-P3M"), 90 * 86_400);
 
-        for unsupported in ["P1H", "PT1D", "TP1M", "T5M", "PP5M"] {
+        for unsupported in ["P1H", "PT1D", "TP1M", "T5M", "PP5M", "3M", "7D"] {
             assert_eq!(resolve_relative_datetime(unsupported), unsupported);
         }
     }
