@@ -6,6 +6,19 @@ Commands that accept a `--db` flag use `~/.apitally/data.duckdb` as the default 
 
 Datetime flags (e.g. `--since`, `--until`, `--requests-since`) accept ISO 8601 strings, compact relative durations (e.g. `30m`, `24h`, `7d`, `2w`), or ISO 8601 durations with a single component (e.g. `P1M`, `P14D`, `PT30M`; a month is 30 days).
 
+## Filters
+
+`metrics`, `request-logs` and `traces` take `--filters` as a JSON array of `{"field", "op", "value"}` objects, combined with AND. Operators by field type:
+
+- **string**: `eq`, `neq`, `in`, `not_in`, `like`, `not_like`, `ilike`, `not_ilike`, `contains`, `not_contains`
+- **int**: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`
+- **datetime**: `eq`, `neq`, `gt`, `gte`, `lt`, `lte` (ISO 8601 value)
+- **ID, enum**: `eq`, `neq`, `in`, `not_in`
+- **nullable** fields also accept `is_null`, `is_not_null`
+- **headers, attributes, events**: require `key`; operators follow the value type, plus `exists`, `not_exists`. Attribute comparisons only match when the key exists with a value of the same JSON type, including `neq` and `not_in`. An `events` filter matches if any event of the span matches, and separate filters may match different events.
+
+`in`/`not_in` take an array, and `not_in` also matches null. Omit `value` for `exists`, `not_exists`, `is_null`, `is_not_null`. `like`/`ilike` use `%` and `_` wildcards; `contains` is case-insensitive.
+
 ## `auth`
 
 ```
@@ -98,9 +111,9 @@ Fetch aggregated metrics for an app. Outputs NDJSON to stdout by default.
 - `--since`: Start of time range, inclusive (ISO 8601 or relative duration, required)
 - `--until`: End of time range, exclusive (ISO 8601 or relative duration, defaults to now)
 - `--metrics`: Comma-separated list or JSON array of metric names to include (required)
-- `--interval`: Time interval for grouping (`month`, `day`, `hour`, `minute`). When omitted, returns a single row per group for the entire time range
+- `--interval`: Interval length as an ISO 8601 duration (`PT1M`, `PT2M`, `PT3M`, `PT5M`, `PT10M`, `PT15M`, `PT20M`, `PT30M`, `PT1H`, `PT2H`, `PT3H`, `PT6H`, `PT12H`, `P1D`, `P1W`, `P1M`). When omitted, returns a single row per group for the entire time range
 - `--group-by`: Comma-separated list or JSON array of field names to group by, in addition to time period
-- `--filters`: JSON array of filter objects (see below)
+- `--filters`: JSON array of filter objects (see [Filters](#filters))
 - `--timezone`: Timezone for intervals and to interpret since/until if not tz-aware (defaults to system timezone)
 - `--db`: Write to `metrics` table in DuckDB instead of outputting NDJSON to stdout
 
@@ -108,21 +121,22 @@ Fetch aggregated metrics for an app. Outputs NDJSON to stdout by default.
 
 ### Available metrics
 
-| Metric                | Type    | Description                            |
-| --------------------- | ------- | -------------------------------------- |
-| `requests`            | integer | Total request count                    |
-| `requests_per_minute` | float   | Requests per minute                    |
-| `consumers`           | integer | Number of distinct consumers           |
-| `bytes_received`      | integer | Total bytes received                   |
-| `bytes_sent`          | integer | Total bytes sent                       |
-| `client_errors`       | integer | 4xx errors (excluding expected errors) |
-| `server_errors`       | integer | 5xx errors (excluding expected errors) |
-| `error_rate`          | float   | Ratio of errors to total requests      |
-| `response_time_p50`   | integer | 50th percentile response time (ms)     |
-| `response_time_p75`   | integer | 75th percentile response time (ms)     |
-| `response_time_p90`   | integer | 90th percentile response time (ms)     |
-| `response_time_p95`   | integer | 95th percentile response time (ms)     |
-| `response_time_p99`   | integer | 99th percentile response time (ms)     |
+| Metric                | Type    | Description                                                                                 |
+| --------------------- | ------- | ------------------------------------------------------------------------------------------- |
+| `requests`            | integer | Total request count                                                                         |
+| `requests_per_minute` | float   | Requests per minute                                                                         |
+| `consumers`           | integer | Number of distinct consumers                                                                |
+| `bytes_received`      | integer | Total bytes received                                                                        |
+| `bytes_sent`          | integer | Total bytes sent                                                                            |
+| `client_errors`       | integer | 4xx errors (excluding expected errors)                                                      |
+| `server_errors`       | integer | 5xx errors (excluding expected errors)                                                      |
+| `error_rate`          | float   | Ratio of errors to total requests                                                           |
+| `response_time_p50`   | integer | 50th percentile response time (ms)                                                          |
+| `response_time_p75`   | integer | 75th percentile response time (ms)                                                          |
+| `response_time_p90`   | integer | 90th percentile response time (ms)                                                          |
+| `response_time_p95`   | integer | 95th percentile response time (ms)                                                          |
+| `response_time_p99`   | integer | 99th percentile response time (ms)                                                          |
+| `apdex_score`         | float   | Apdex score from 0 to 1, based on each endpoint's target response time set in the dashboard |
 
 ### Group-by fields
 
@@ -130,17 +144,12 @@ Fetch aggregated metrics for an app. Outputs NDJSON to stdout by default.
 
 ### Filters
 
-Pass `--filters` as a JSON array of filter objects. Supported fields and operators:
-
-- **string fields** (`env`, `method`, `path`): `eq`, `neq`, `in`, `not_in`, `like`, `not_like`, `contains`, `not_contains`
-- **numeric fields** (`consumer_id`, `status_code`): `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`, `is_null`, `is_not_null`
-
-Filter examples:
+Filter fields: `env`, `method`, `path` (string), `status_code` (int), `consumer_id` (ID, nullable). See [Filters](#filters) for operators.
 
 ```json
 [{"field":"method","op":"eq","value":"GET"}]
-[{"field":"status_code","op":"gte","value":400}]
 [{"field":"path","op":"like","value":"/v1/users/%"}]
+[{"field":"status_code","op":"gte","value":400}]
 ```
 
 Example NDJSON output (without `--db`):
@@ -176,72 +185,42 @@ Timestamps without timezone are treated as UTC. Results are ordered by timestamp
 | ------------------------- | -------------------------------- | ------- |
 | `timestamp`               | string (datetime)                | yes     |
 | `request_uuid`            | string (ID)                      | yes     |
-| `trace_id`                | string (ID)                      | yes     |
+| `trace_id`                | string (ID), nullable            | yes     |
 | `env`                     | string                           | yes     |
 | `method`                  | string                           | yes     |
-| `path`                    | string                           | yes     |
+| `path`                    | string, nullable                 | yes     |
 | `url`                     | string                           | yes     |
-| `consumer_id`             | int (ID)                         | yes     |
+| `consumer_id`             | int (ID), nullable               | yes     |
 | `request_headers`         | array of string tuples (headers) | no      |
 | `request_size_bytes`      | int                              | yes     |
-| `request_body_json`       | string (JSON)                    | no      |
+| `request_body_json`       | string (JSON), nullable          | no      |
 | `status_code`             | int                              | yes     |
 | `response_time_ms`        | int                              | yes     |
 | `response_headers`        | array of string tuples (headers) | no      |
 | `response_size_bytes`     | int                              | yes     |
-| `response_body_json`      | string (JSON)                    | no      |
-| `client_ip`               | string                           | yes     |
-| `client_country_iso_code` | string                           | yes     |
+| `response_body_json`      | string (JSON), nullable          | no      |
+| `client_ip`               | string, nullable                 | yes     |
+| `client_country_iso_code` | string, nullable                 | yes     |
 | `custom_attributes`       | object                           | no      |
-| `exception_type`          | string                           | no      |
-| `exception_message`       | string                           | no      |
-| `exception_stacktrace`    | string                           | no      |
-| `sentry_event_id`         | string (ID)                      | no      |
+| `exception_type`          | string, nullable                 | no      |
+| `exception_message`       | string, nullable                 | no      |
+| `exception_stacktrace`    | string, nullable                 | no      |
+| `sentry_event_id`         | string (ID), nullable            | no      |
 
 Default fields are included when `--fields` is omitted. Providing `--fields` replaces the defaults, but `timestamp`, `request_uuid`, `trace_id`, `method`, and `url` are always included. With `--db`, refetching replaces complete matching rows and sets omitted columns to `NULL`.
 
 ### Filters
 
-Pass `--filters` as a JSON array of filter objects. Multiple filters are combined with AND.
-
-Filter object keys:
-
-- `field`: field name to filter on
-- `op`: comparison operator
-- `value`: comparison value (omit for `exists`/`not_exists`)
-- `key`: header name, required for `request_headers` and `response_headers`; case-sensitive attribute name, required for `custom_attributes`
-
-#### Operators by field type
-
-All fields can be used in filters. Available operators depend on the field type:
-
-- **string / string (JSON)**: `eq`, `neq`, `in`, `not_in`, `like`, `not_like`, `ilike`, `not_ilike`, `contains`, `not_contains`, `is_null`, `is_not_null`
-- **string (datetime)**: `eq`, `neq`, `gt`, `gte`, `lt`, `lte` — value is an ISO 8601 datetime string
-- **string (ID) / int (ID)**: `eq`, `neq`, `in`, `not_in`, `is_null`, `is_not_null`
-- **array of string tuples (headers)**: `eq`, `neq`, `in`, `not_in`, `like`, `not_like`, `ilike`, `not_ilike`, `contains`, `not_contains`, `exists`, `not_exists` — requires `key`
-- **object (custom attributes)**: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`, `like`, `not_like`, `ilike`, `not_ilike`, `contains`, `not_contains`, `exists`, `not_exists`. Requires `key`; operators depend on the attribute value type, following the traces [attribute rules](#attribute-and-event-rules)
-- **int**: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`
-
-#### Value rules
-
-- `in`/`not_in`: value must be a JSON array (of strings or ints matching the field type)
-- `exists`/`not_exists`/`is_null`/`is_not_null`: omit value entirely
-- `like`/`ilike`/`not_like`/`not_ilike`: use `%` as wildcard
-- `contains`/`not_contains`: case-insensitive substring match (no wildcards needed)
-
-#### Filter examples
+See [Filters](#filters). `key` is the header name for `request_headers` and `response_headers`, and the case-sensitive attribute name for `custom_attributes`.
 
 ```json
-[{"field": "consumer_id", "op": "eq", "value": 42}]
-[{"field": "consumer_id", "op": "is_null"}]
-[{"field": "path", "op": "eq", "value": "/v1/users/{user_id}"}]
-[{"field": "url", "op": "ilike", "value": "%/users/123%"}]
-[{"field": "status_code", "op": "gte", "value": 400},{"field": "status_code", "op": "lt", "value": 500}]
-[{"field": "request_headers", "key": "x-api-version", "op": "exists"}]
-[{"field": "request_headers", "key": "content-type", "op": "eq", "value": "application/json"}]
-[{"field": "response_body_json", "op": "contains", "value": "error"}]
-[{"field": "custom_attributes", "key": "tenant.id", "op": "exists"}]
-[{"field": "custom_attributes", "key": "tenant.id", "op": "eq", "value": "acme"}]
+[{"field":"consumer_id","op":"is_null"}]
+[{"field":"url","op":"ilike","value":"%/users/123%"}]
+[{"field":"status_code","op":"gte","value":400}]
+[{"field":"request_headers","key":"x-api-version","op":"exists"}]
+[{"field":"request_headers","key":"content-type","op":"eq","value":"application/json"}]
+[{"field":"response_body_json","op":"contains","value":"error"}]
+[{"field":"custom_attributes","key":"tenant.id","op":"eq","value":"acme"}]
 ```
 
 Example NDJSON output (without `--db`):
@@ -301,22 +280,22 @@ Filters and sampling select individual spans, not whole traces. To fetch related
 
 ### Fields
 
-| Field            | Type             | Default | Notes                                                                 |
-| ---------------- | ---------------- | ------- | --------------------------------------------------------------------- |
-| `trace_id`       | string (ID)      | yes     | 32-character lowercase hex                                            |
-| `span_id`        | string (ID)      | yes     | 16-character lowercase hex                                            |
-| `parent_span_id` | string (ID)      | yes     | 16-character lowercase hex; null for no parent                        |
-| `env`            | string           | yes     | Environment name                                                      |
-| `name`           | string           | yes     | Span operation name                                                   |
-| `kind`           | enum string      | yes     | `UNSPECIFIED`, `INTERNAL`, `SERVER`, `CLIENT`, `PRODUCER`, `CONSUMER` |
-| `status`         | enum string      | yes     | `UNSET`, `OK`, `ERROR`                                                |
-| `start_time_ns`  | int64            | yes     | Unix epoch nanoseconds                                                |
-| `end_time_ns`    | int64            | yes     | Unix epoch nanoseconds                                                |
-| `duration_ns`    | int64            | yes     | Nanoseconds                                                           |
-| `attributes`     | object           | no      | Attribute names mapped to JSON values                                 |
-| `events`         | array of objects | no      | Each event object has `timestamp`, `name`, and `attributes` keys      |
-| `scope_name`     | string           | no      | Instrumentation scope                                                 |
-| `scope_version`  | string           | no      | Instrumentation scope version                                         |
+| Field            | Type                  | Default | Notes                                                                 |
+| ---------------- | --------------------- | ------- | --------------------------------------------------------------------- |
+| `trace_id`       | string (ID)           | yes     | 32-character lowercase hex                                            |
+| `span_id`        | string (ID)           | yes     | 16-character lowercase hex                                            |
+| `parent_span_id` | string (ID), nullable | yes     | 16-character lowercase hex; null for no parent                        |
+| `env`            | string, nullable      | yes     | Environment name                                                      |
+| `name`           | string                | yes     | Span operation name                                                   |
+| `kind`           | enum string           | yes     | `UNSPECIFIED`, `INTERNAL`, `SERVER`, `CLIENT`, `PRODUCER`, `CONSUMER` |
+| `status`         | enum string           | yes     | `UNSET`, `OK`, `ERROR`                                                |
+| `start_time_ns`  | int64                 | yes     | Unix epoch nanoseconds                                                |
+| `end_time_ns`    | int64                 | yes     | Unix epoch nanoseconds                                                |
+| `duration_ns`    | int64                 | yes     | Nanoseconds                                                           |
+| `attributes`     | object                | no      | Attribute names mapped to JSON values                                 |
+| `events`         | array of objects      | no      | Each event object has `timestamp`, `name`, and `attributes` keys      |
+| `scope_name`     | string, nullable      | no      | Instrumentation scope                                                 |
+| `scope_version`  | string, nullable      | no      | Instrumentation scope version                                         |
 
 Default fields are included when `--fields` is omitted. Providing `--fields` replaces the defaults, but `trace_id`, `span_id`, and `start_time_ns` are always included.
 
@@ -324,55 +303,15 @@ Event timestamps are ISO 8601 UTC strings with nanosecond precision. See [JSON e
 
 ### Filters
 
-Pass `--filters` as a JSON array of filter objects. Multiple filters are combined with AND.
-
-Filter object keys:
-
-- `field`: field name to filter on
-- `op`: comparison operator
-- `value`: comparison value (omit for existence/null checks)
-- `key`: case-sensitive attribute name, required for `attributes` and optional for `events`
-- `event_name`: exact, case-sensitive event name, only for `events`
-
-#### Operators by field type
-
-All fields can be used in filters, even if not selected for output. Available operators depend on the field type:
-
-- **string**: `eq`, `neq`, `in`, `not_in`, `like`, `not_like`, `ilike`, `not_ilike`, `contains`, `not_contains`; nullable fields also support `is_null`, `is_not_null`
-- **int64**: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`
-- **enum string**: `eq`, `neq`, `in`, `not_in`
-- **string (ID)**: `eq`, `neq`, `in`, `not_in`; `parent_span_id` also supports `is_null`, `is_not_null`
-- **attributes / events**: operators depend on the attribute value type (see below)
-
-#### Value rules
-
-- Values must match the field type. IDs accept either hex case and are normalized to lowercase; enums use the uppercase values in the field table.
-- `in`/`not_in`: value must be a JSON array; other comparisons take scalars. JSON null is not allowed as a value or array item.
-- `exists`/`not_exists`/`is_null`/`is_not_null`: omit value entirely
-- `like`/`ilike`/`not_like`/`not_ilike`: use `%` and `_` as wildcards; `ilike` variants are case-insensitive
-- `contains`/`not_contains`: case-insensitive substring match (no wildcards needed)
-- `not_in` can match null fields, unlike SQL `NOT IN`
-
-#### Attribute and event rules
-
-- `exists`/`not_exists` check for an attribute or event. Event filters require `key`, `event_name`, or both; without `key`, only existence checks are supported.
-- String attributes support the string operators above except null checks. Numeric attributes support the int64 operators, with integer or float values. Boolean attributes support `eq`, `neq`, `in`, `not_in`.
-- Attribute membership arrays must be nonempty and contain one scalar type (integers and floats may be mixed). Use existence checks for array or object attributes.
-- Comparisons require a matching JSON type and an existing key, including for `neq` and `not_in`.
-- Each event filter matches any event satisfying its conditions; `not_exists` negates that match. Separate filters may match different events. Output includes all events of matching spans.
-
-#### Filter examples
+See [Filters](#filters). `key` is the case-sensitive attribute name for `attributes` and `events`.
 
 ```json
 [{"field":"trace_id","op":"eq","value":"0123456789abcdef0123456789abcdef"}]
-[{"field":"env","op":"eq","value":"prod"},{"field":"duration_ns","op":"gte","value":100000000}]
 [{"field":"kind","op":"in","value":["CLIENT","INTERNAL"]}]
-[{"field":"parent_span_id","op":"is_null"}]
 [{"field":"name","op":"ilike","value":"%query%"}]
+[{"field":"env","op":"eq","value":"prod"},{"field":"duration_ns","op":"gte","value":100000000}]
 [{"field":"attributes","key":"db.system","op":"eq","value":"postgresql"}]
-[{"field":"attributes","key":"db.statement","op":"exists"}]
-[{"field":"events","event_name":"exception","op":"exists"}]
-[{"field":"events","event_name":"exception","key":"exception.type","op":"eq","value":"TimeoutError"}]
+[{"field":"events","key":"exception.type","op":"exists"}]
 ```
 
 Example NDJSON output (without `--db`):
