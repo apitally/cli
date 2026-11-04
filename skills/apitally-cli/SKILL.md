@@ -83,7 +83,7 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
      ```
      npx @apitally/cli metrics <app-id> --since "<since>" \
        --metrics '["requests","error_rate","response_time_p50","response_time_p95"]' \
-       --group-by '["method","path"]' --interval day --db
+       --group-by '["method","path"]' --interval P1D --db
      ```
 
    - **Request logs** - for individual requests: errors, exceptions, headers, payloads, or requests to correlate with traces. Narrow fields and filters to avoid unnecessary volume. Refetching replaces whole records in DuckDB, clearing omitted fields; select every field still needed.

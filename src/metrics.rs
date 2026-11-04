@@ -31,11 +31,13 @@ pub(crate) fn ensure_metrics_table(conn: &duckdb::Connection) -> Result<()> {
             response_time_p75   INTEGER,
             response_time_p90   INTEGER,
             response_time_p95   INTEGER,
-            response_time_p99   INTEGER
+            response_time_p99   INTEGER,
+            apdex_score         DOUBLE
         );
         ALTER TABLE metrics ADD COLUMN IF NOT EXISTS response_time_p90 INTEGER;
         ALTER TABLE metrics ADD COLUMN IF NOT EXISTS response_time_p99 INTEGER;
-        ALTER TABLE metrics ADD COLUMN IF NOT EXISTS consumers BIGINT;",
+        ALTER TABLE metrics ADD COLUMN IF NOT EXISTS consumers BIGINT;
+        ALTER TABLE metrics ADD COLUMN IF NOT EXISTS apdex_score DOUBLE;",
     )?;
     Ok(())
 }
@@ -182,6 +184,7 @@ mod tests {
             Field::new("requests", DataType::Int64, false),
             Field::new("consumers", DataType::Int64, false),
             Field::new("error_rate", DataType::Float64, false),
+            Field::new("apdex_score", DataType::Float64, true),
         ]));
         let batch = RecordBatch::try_new(
             schema.clone(),
@@ -202,6 +205,7 @@ mod tests {
                 Arc::new(Int64Array::from(vec![100; ROW_COUNT])),
                 Arc::new(Int64Array::from(vec![3; ROW_COUNT])),
                 Arc::new(Float64Array::from(vec![0.05; ROW_COUNT])),
+                Arc::new(Float64Array::from(vec![0.9; ROW_COUNT])),
             ],
         )
         .unwrap();
@@ -266,7 +270,7 @@ mod tests {
             1,
             "2025-01-01",
             None,
-            r#"["requests","consumers","error_rate"]"#,
+            r#"["requests","consumers","error_rate","apdex_score"]"#,
             Some("hour"),
             Some(r#"["method"]"#),
             None,
@@ -284,7 +288,7 @@ mod tests {
         let (count, periods, matching): (i64, i64, i64) = conn
             .query_row(
                 "SELECT count(*), count(DISTINCT period_start), count(*) FILTER (
-                    WHERE app_id = 1 AND method = 'GET' AND requests = 100 AND consumers = 3 AND error_rate = 0.05
+                    WHERE app_id = 1 AND method = 'GET' AND requests = 100 AND consumers = 3 AND error_rate = 0.05 AND apdex_score = 0.9
                     AND epoch_ms(period_end) - epoch_ms(period_start) = 3600000
                  ) FROM metrics",
                 [],
