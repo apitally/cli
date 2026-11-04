@@ -141,13 +141,15 @@ enum Command {
         /// JSON array or comma-separated list of metric names to include
         ///
         /// Available metrics: requests, requests_per_minute, consumers, bytes_received, bytes_sent, client_errors, server_errors,
-        /// error_rate, response_time_p50, response_time_p75, response_time_p90, response_time_p95, response_time_p99.
+        /// error_rate, response_time_p50, response_time_p75, response_time_p90, response_time_p95, response_time_p99,
+        /// apdex_score.
         #[arg(long)]
         metrics: String,
 
-        /// Time interval for grouping
+        /// Interval length as an ISO 8601 duration, to group by interval
         ///
-        /// Available intervals: month, day, hour, minute.
+        /// Available intervals: PT1M, PT2M, PT3M, PT5M, PT10M, PT15M, PT20M, PT30M,
+        /// PT1H, PT2H, PT3H, PT6H, PT12H, P1D, P1W, P1M.
         /// When omitted, returns a single row per group for the entire time range.
         #[arg(long)]
         interval: Option<String>,
@@ -158,18 +160,20 @@ enum Command {
         #[arg(long)]
         group_by: Option<String>,
 
-        /// JSON array of filter objects with "field", "op", and "value" keys
+        /// JSON array of filter objects with "field", "op" and "value" keys, combined with AND
         ///
-        /// Supported fields: env, consumer_id, method, path, status_code.
+        /// Fields and operators:
+        ///   env, method, path: eq, neq, in, not_in, like, not_like, ilike, not_ilike, contains, not_contains
+        ///   status_code: eq, neq, gt, gte, lt, lte, in, not_in
+        ///   consumer_id: eq, neq, in, not_in, is_null, is_not_null
         ///
-        /// Supported operators:
-        ///   string fields (env, method, path): eq, neq, in, not_in, like, not_like, contains, not_contains
-        ///   numeric fields (consumer_id, status_code): eq, neq, gt, gte, lt, lte, in, not_in, is_null, is_not_null
+        /// in/not_in take an array and not_in also matches null. Omit "value" for
+        /// is_null and is_not_null.
         ///
         /// Examples:
         ///   [{"field":"method","op":"eq","value":"GET"}]
         ///   [{"field":"status_code","op":"gte","value":400}]
-        #[arg(long)]
+        #[arg(long, verbatim_doc_comment)]
         filters: Option<String>,
 
         /// Timezone for intervals and to interpret since/until if not tz-aware
@@ -225,28 +229,31 @@ enum Command {
         #[arg(long)]
         fields: Option<String>,
 
-        /// JSON array of filter objects with "field", "op", and "value" keys
+        /// JSON array of filter objects with "field", "op" and "value" keys, combined with AND
         ///
-        /// Supported operators:
-        ///   string fields: eq, neq, in, not_in, like, not_like, ilike, not_ilike, contains, not_contains, is_null, is_not_null
-        ///   numeric fields: eq, neq, gt, gte, lt, lte, in, not_in
-        ///   header fields: eq, neq, in, not_in, like, not_like, ilike, not_ilike, contains, not_contains, exists, not_exists
-        ///   custom_attributes: eq, neq, gt, gte, lt, lte, in, not_in, like, not_like, ilike, not_ilike, contains, not_contains, exists, not_exists
-        ///   ID fields: eq, neq, in, not_in, is_null, is_not_null
+        /// Operators by field type:
+        ///   int (request_size_bytes, status_code, response_time_ms, response_size_bytes): eq, neq, gt, gte, lt, lte, in, not_in
+        ///   datetime (timestamp): eq, neq, gt, gte, lt, lte
+        ///   ID (request_uuid, consumer_id, trace_id, sentry_event_id): eq, neq, in, not_in
+        ///   headers (request_headers, response_headers): string operators, exists, not_exists
+        ///   custom_attributes: operators of the attribute value's type, exists, not_exists
+        ///   string (all other fields): eq, neq, in, not_in, like, not_like, ilike, not_ilike, contains, not_contains
         ///
-        /// For "in" and "not_in", "value" must be a JSON array. For header fields,
-        /// use "key" for the header name. custom_attributes requires "key" (the
-        /// case-sensitive attribute name); its operators depend on the attribute
-        /// value type, as for traces attributes. For "exists", "not_exists",
-        /// "is_null", and "is_not_null", omit "value".
+        /// String and ID fields except request_uuid, env, method and url also accept
+        /// is_null and is_not_null. Headers and custom_attributes require "key" (the
+        /// header name or the case-sensitive attribute name).
+        ///
+        /// in/not_in take an array and not_in also matches null. Omit "value" for
+        /// exists, not_exists, is_null and is_not_null. like/ilike use % and _
+        /// wildcards; contains is case-insensitive. Attribute comparisons only match
+        /// when the key exists with a value of the same JSON type, including neq and
+        /// not_in.
         ///
         /// Examples:
         ///   [{"field":"status_code","op":"gte","value":400}]
-        ///   [{"field":"path","op":"ilike","value":"/users/%"}]
         ///   [{"field":"request_headers","key":"content-type","op":"eq","value":"application/json"}]
-        ///   [{"field":"response_body_json","op":"ilike","value":"%error%"}]
         ///   [{"field":"custom_attributes","key":"tenant.id","op":"eq","value":"acme"}]
-        #[arg(long)]
+        #[arg(long, verbatim_doc_comment)]
         filters: Option<String>,
 
         /// Approximate sample size (integer) or sample rate (float > 0 and <= 0.5)
@@ -330,63 +337,30 @@ enum Command {
         #[arg(long, verbatim_doc_comment)]
         fields: Option<String>,
 
-        /// JSON array of filter objects with "field", "op", and "value" keys
+        /// JSON array of filter objects with "field", "op" and "value" keys, combined with AND
         ///
-        /// Clauses are ANDed. All fields are filterable without selecting them.
-        /// Aliases: column/col for field, operator for op, val for value.
-        /// Field/operator names are trimmed and lowercased; enum values,
-        /// attribute keys and event names are case-sensitive. event_name is exact.
+        /// Operators by field type:
+        ///   string (env, name, scope_name, scope_version): eq, neq, in, not_in, like, not_like, ilike, not_ilike, contains, not_contains
+        ///   int (start_time_ns, end_time_ns, duration_ns): eq, neq, gt, gte, lt, lte, in, not_in
+        ///   enum (kind, status), ID (trace_id, span_id, parent_span_id): eq, neq, in, not_in
+        ///   attributes, events: operators of the attribute value's type, exists, not_exists
         ///
-        /// Supported operators by field category:
-        ///   strings (env, name, scope_name, scope_version): eq, neq, in, not_in, like, not_like, ilike, not_ilike, contains, not_contains, is_null, is_not_null
-        ///   integers (start_time_ns, end_time_ns, duration_ns): eq, neq, gt, gte, lt, lte, in, not_in
-        ///   enums (kind, status): eq, neq, in, not_in
-        ///   IDs (trace_id, span_id, parent_span_id): eq, neq, in, not_in, is_null, is_not_null
-        ///   maps (attributes, events): eq, neq, gt, gte, lt, lte, in, not_in, like, not_like, ilike, not_ilike, contains, not_contains, exists, not_exists
+        /// parent_span_id, env, scope_name and scope_version also accept is_null and
+        /// is_not_null. attributes and events require "key" (the case-sensitive
+        /// attribute name).
         ///
-        /// Null operators are not valid for name, trace_id or span_id. Trace IDs
-        /// require 32 hex characters; span/parent IDs require 16. Hex case is
-        /// normalized. Integer fields require JSON integers, not floats/strings.
-        /// Enum values must be uppercase values listed under --fields.
-        ///
-        /// in/not_in require arrays; other comparisons require scalars. Scalar-field
-        /// lists may be empty; JSON null is not a comparison value or list item. Omit
-        /// value for exists, not_exists, is_null and is_not_null. like/ilike use
-        /// SQL wildcards (% and _); contains/not_contains are case-insensitive
-        /// substrings. not_in on nullable scalar fields also matches null rows.
-        ///
-        /// attributes requires "key". events requires "key", "event_name", or
-        /// both; event_name alone permits only exists/not_exists. key is valid
-        /// only for attributes/events; event_name only for events.
-        ///
-        /// Attribute value types restrict map operators: strings support string
-        /// comparisons/patterns/membership (no null operators); numbers support
-        /// equality/ordering/membership; booleans only eq/neq/in/not_in. Lists
-        /// must be nonempty with one scalar type (integers and finite floats may
-        /// mix). Use existence checks for array/object/null attributes.
-        /// Comparisons require a present key
-        /// of the same JSON type; missing keys do not satisfy neq/not_in.
-        ///
-        /// Event clauses match any qualifying event; not_exists negates that
-        /// existence. Event neq/not_in means any matching negative comparison,
-        /// not that no event equals the value. Separate clauses may match
-        /// different events. All events of selected spans are returned.
+        /// in/not_in take an array and not_in also matches null. Omit "value" for
+        /// exists, not_exists, is_null and is_not_null. like/ilike use % and _
+        /// wildcards; contains is case-insensitive. Attribute comparisons only match
+        /// when the key exists with a value of the same JSON type, including neq and
+        /// not_in. An events filter matches if any event of the span matches, and
+        /// separate filters may match different events.
         ///
         /// Examples:
         ///   [{"field":"trace_id","op":"eq","value":"0123456789abcdef0123456789abcdef"}]
-        ///   [{"field":"env","op":"eq","value":"prod"},{"field":"duration_ns","op":"gte","value":100000000}]
-        ///   [{"field":"kind","op":"in","value":["CLIENT","INTERNAL"]}]
-        ///   [{"field":"status","op":"eq","value":"ERROR"}]
-        ///   [{"field":"parent_span_id","op":"is_null"}]
-        ///   [{"field":"name","op":"ilike","value":"%query%"}]
-        ///   [{"field":"scope_name","op":"is_not_null"}]
+        ///   [{"field":"duration_ns","op":"gte","value":100000000}]
         ///   [{"field":"attributes","key":"db.system","op":"eq","value":"postgresql"}]
-        ///   [{"field":"attributes","key":"retry.count","op":"gte","value":2}]
-        ///   [{"field":"attributes","key":"cached","op":"eq","value":true}]
-        ///   [{"field":"attributes","key":"db.statement","op":"exists"}]
-        ///   [{"field":"events","event_name":"exception","op":"exists"}]
-        ///   [{"field":"events","event_name":"exception","key":"exception.type","op":"eq","value":"TimeoutError"}]
-        ///   [{"field":"events","key":"code","op":"in","value":[500,503]}]
+        ///   [{"field":"events","key":"exception.type","op":"exists"}]
         #[arg(long, verbatim_doc_comment)]
         filters: Option<String>,
 
