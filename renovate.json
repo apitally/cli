@@ -6,15 +6,6 @@
       "matchManagers": ["cargo"],
       "matchDepNames": ["duckdb", "arrow", "arrow-ipc"],
       "groupName": "duckdb and arrow"
-    },
-    {
-      "matchManagers": ["github-actions"],
-      "matchPackageNames": [
-        "taiki-e/install-action",
-        "actions/upload-artifact"
-      ],
-      "matchUpdateTypes": ["digest"],
-      "enabled": false
     }
   ]
 }
