@@ -13,9 +13,9 @@ Datetime flags (e.g. `--since`, `--until`, `--requests-since`) accept ISO 8601 s
 - **string**: `eq`, `neq`, `in`, `not_in`, `like`, `not_like`, `ilike`, `not_ilike`, `contains`, `not_contains`
 - **int**: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`
 - **datetime**: `eq`, `neq`, `gt`, `gte`, `lt`, `lte` (ISO 8601 value)
-- **ID, enum**: `eq`, `neq`, `in`, `not_in` (enum values match in any letter case)
+- **ID, enum**: `eq`, `neq`, `in`, `not_in`
 - **nullable** fields also accept `is_null`, `is_not_null`
-- **headers**: require `key` (the header name, in any letter case); string operators, plus `exists`, `not_exists`
+- **headers**: require `key`; string operators, plus `exists`, `not_exists`
 - **attributes, events, JSON bodies**: require `key`; operators follow the type of the filter value (string, number or boolean), plus `exists`, `not_exists`, `is_null`, `is_not_null`
 
 `in`/`not_in` take an array. Omit `value` for `exists`, `not_exists`, `is_null`, `is_not_null`. `like`/`ilike` use `%` and `_` wildcards; `contains` is case-insensitive.
@@ -80,7 +80,7 @@ Example NDJSON output (without `--db`):
 npx @apitally/cli consumers <app-id> [--requests-since <datetime>] [--db [<path>]]
 ```
 
-List all consumers for an app, including their attributes. Request logs and metrics can be filtered and grouped by consumer identifier, name and group directly, so this command is only needed to list consumers or to select them by attributes. Outputs NDJSON to stdout by default.
+List all consumers for an app, including their attributes. Outputs NDJSON to stdout by default.
 
 - `--requests-since`: Only return consumers active since this datetime (ISO 8601 or relative duration, e.g. 24h, 7d)
 - `--db`: Write to `consumers` table in DuckDB instead of outputting NDJSON to stdout
@@ -191,13 +191,13 @@ Fetch request log data for an app. Outputs NDJSON to stdout by default.
 - `--until`: End of time range, exclusive (ISO 8601 or relative duration, defaults to now)
 - `--fields`: Comma-separated list or JSON array of field names to include
 - `--filters`: JSON array of filter objects
-- `--sort-by`: Field to sort by: `timestamp` (default), `response_time_ms`, `request_size_bytes` or `response_size_bytes`. The sort field is always included in the output
+- `--sort-by`: Field to sort by: `timestamp` (default), `response_time_ms`, `request_size_bytes` or `response_size_bytes`
 - `--sort-direction`: `asc` (default) or `desc`
 - `--sample`: Approximate sample size (integer, e.g. `1000`) or sample rate (float > 0 and <= 0.5, e.g. `0.1` for ~10%)
-- `--limit`: Maximum number of rows (hard cap: 1,000,000), applied after sorting
+- `--limit`: Maximum number of rows (hard cap: 1,000,000), applied after sorting; without sort flags, these are the oldest rows in the time range
 - `--db`: Write to `request_logs` table in DuckDB instead of outputting NDJSON to stdout
 
-Timestamps without timezone are treated as UTC. Results are ordered by timestamp ascending by default, so `--limit` alone returns the oldest rows in the time range. Use `--sort-direction desc --limit 20` for the 20 newest rows, or `--sort-by response_time_ms --sort-direction desc --limit 20` for the 20 slowest.
+Timestamps without timezone are treated as UTC. Results are ordered by timestamp ascending by default.
 
 ### Fields
 
@@ -234,7 +234,7 @@ Timestamps without timezone are treated as UTC. Results are ordered by timestamp
 
 Default fields are included when `--fields` is omitted. Providing `--fields` replaces the defaults, but `timestamp`, `request_uuid`, `trace_id`, `method`, and `url` are always included. With `--db`, refetching replaces complete matching rows and sets omitted columns to `NULL`.
 
-`consumer_identifier`, `consumer_name` and `consumer_group` are the identifier, display name and group name of the request's consumer. `request_body_json` and `response_body_json` are null unless the body is valid JSON. `request_body_text` and `response_body_text` hold the stored body as text, including non-JSON bodies.
+`request_body_text` and `response_body_text` return the body as stored: JSON, NDJSON, plain text or Markdown, or `[BODY_TOO_LARGE]` (over 50 KB) or `[REDACTED]` in place of the body. `request_body_json` and `response_body_json` return the same body only if it is valid JSON, and null otherwise. Select one of the two, not both. Select the text field unless you will run SQL JSON functions on the body, which fail on values that are not valid JSON.
 
 ### Filters
 
@@ -244,7 +244,7 @@ See [Filters](#filters). `key` is:
 - the case-sensitive attribute name for `custom_attributes`
 - a JSONPath to values in the body for `request_body_json` and `response_body_json`, such as `$.customer.country` or `$.items[*].sku`. Supported are property names (`.name` or `['name']`), list positions (`[0]`) and `[*]` for all items of a list
 
-To search a body as plain text, filter `request_body_text` or `response_body_text`, which take no `key`.
+Filter `request_body_json` or `response_body_json` to compare a value at a JSONPath in a JSON body. Filter `request_body_text` or `response_body_text`, which take no `key`, to search the whole body as a string, including non-JSON bodies.
 
 ```json
 [{"field":"consumer_id","op":"is_null"}]
@@ -308,13 +308,13 @@ Fetch trace spans for an app. Outputs NDJSON to stdout by default, with one span
 - `--until`: Span start time, exclusive; defaults to now
 - `--fields`: Comma-separated list or JSON array of field names to include
 - `--filters`: JSON array of filter objects
-- `--sort-by`: Field to sort by: `start_time_ns` (default), `end_time_ns` or `duration_ns`. The sort field is always included in the output
+- `--sort-by`: Field to sort by: `start_time_ns` (default), `end_time_ns` or `duration_ns`
 - `--sort-direction`: `asc` (default) or `desc`
 - `--sample`: Approximate sample size (positive integer, e.g. `1000`) or sample rate (float > 0 and <= 0.5, e.g. `0.1`)
-- `--limit`: Maximum number of spans, from 1 to 1,000,000 (default: 1,000,000), applied after sorting
+- `--limit`: Maximum number of spans, from 1 to 1,000,000 (default: 1,000,000), applied after sorting; without sort flags, these are the oldest spans in the time range
 - `--db`: Write to `spans` table in DuckDB instead of outputting NDJSON to stdout
 
-Timestamps without timezone are treated as UTC. Results are ordered by start time ascending by default, so `--limit` alone returns the oldest spans in the time range. Use `--sort-by duration_ns --sort-direction desc --limit 20` for the 20 slowest spans.
+Timestamps without timezone are treated as UTC. Results are ordered by start time ascending by default.
 
 Filters and sampling select individual spans, not whole traces. To fetch related spans, query their trace IDs without other filters, sampling, or time bounds; the limit still applies.
 
@@ -343,7 +343,7 @@ Event timestamps are ISO 8601 UTC strings with nanosecond precision. See [JSON e
 
 ### Filters
 
-See [Filters](#filters). `key` is the case-sensitive attribute name for `attributes` and `events`. `kind` and `status` values match in any letter case.
+See [Filters](#filters). `key` is the case-sensitive attribute name for `attributes` and `events`.
 
 ```json
 [{"field":"trace_id","op":"eq","value":"0123456789abcdef0123456789abcdef"}]

@@ -104,19 +104,19 @@ CREATE TABLE request_logs (
     path                    VARCHAR,            -- parameterized route template, e.g. /users/{user_id}
     url                     VARCHAR NOT NULL,   -- full URL with actual path values, e.g. https://api.example.com/users/123
     consumer_id             INTEGER,            -- references consumers.consumer_id
-    consumer_identifier     VARCHAR,            -- same value as consumers.identifier
-    consumer_name           VARCHAR,            -- same value as consumers.name
-    consumer_group          VARCHAR,            -- same value as consumers."group"
+    consumer_identifier     VARCHAR,
+    consumer_name           VARCHAR,
+    consumer_group          VARCHAR,
     request_headers         STRUCT(name VARCHAR, value VARCHAR)[],
     request_size_bytes      BIGINT,
     request_body_json       JSON,               -- max 50 KB, null if too large or not valid JSON
-    request_body_text       VARCHAR,            -- body as text, including non-JSON bodies; max 50 KB, null if too large
+    request_body_text       VARCHAR,            -- body as stored, including non-JSON bodies; '[BODY_TOO_LARGE]' if over 50 KB
     status_code             INTEGER,
     response_time_ms        INTEGER,
     response_headers        STRUCT(name VARCHAR, value VARCHAR)[],
     response_size_bytes     BIGINT,
     response_body_json      JSON,               -- max 50 KB, null if too large or not valid JSON
-    response_body_text      VARCHAR,            -- body as text, including non-JSON bodies; max 50 KB, null if too large
+    response_body_text      VARCHAR,            -- body as stored, including non-JSON bodies; '[BODY_TOO_LARGE]' if over 50 KB
     client_ip               VARCHAR,
     client_country_iso_code VARCHAR,
     custom_attributes       JSON,               -- attributes set through the SDKs, JSON object with native values
@@ -180,7 +180,7 @@ Databases whose `spans` table has `request_uuid` require an explicit reset and r
 
 ## Relationships
 
-- `request_logs.consumer_id` references `consumers.consumer_id` (join on both `app_id` and `consumer_id`). The join is only needed for consumer attributes; identifier, name and group are available as `request_logs` columns when selected in `--fields`
+- `request_logs.consumer_id` references `consumers.consumer_id` (join on both `app_id` and `consumer_id`)
 - `metrics.consumer_id` references `consumers.consumer_id` (join on both `app_id` and `consumer_id`, only when metrics are grouped by consumer_id)
 - `endpoints.app_id` references `apps.app_id`
 - `metrics.app_id` references `apps.app_id`

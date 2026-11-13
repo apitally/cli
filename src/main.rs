@@ -209,7 +209,6 @@ enum Command {
         /// Since datetime (ISO 8601 or relative duration, e.g. 24h, 7d)
         ///
         /// Required unless filters contain a request_uuid eq/in lookup.
-        /// The API validates this requirement (input errors exit with code 4).
         #[arg(long)]
         since: Option<String>,
 
@@ -234,10 +233,12 @@ enum Command {
         /// response_size_bytes, client_ip, client_country_iso_code.
         /// With --db, refetching replaces whole rows; omitted fields become null.
         ///
-        /// request_body_json and response_body_json are null unless the body is
-        /// valid JSON. request_body_text and response_body_text hold the stored
-        /// body as text, including non-JSON bodies. custom_attributes is an object
-        /// mapping attribute names to JSON values ({} when none are set).
+        /// request_body_text and response_body_text return the body as stored, or
+        /// [BODY_TOO_LARGE] (over 50 KB) or [REDACTED] in its place.
+        /// request_body_json and response_body_json return the same body only if
+        /// it is valid JSON, and null otherwise; select them instead of the text
+        /// fields to run SQL JSON functions on the body. custom_attributes is an
+        /// object mapping attribute names to JSON values ({} when none are set).
         #[arg(long)]
         fields: Option<String>,
 
@@ -286,14 +287,11 @@ enum Command {
         /// Field to sort by (default: timestamp)
         ///
         /// Available fields: timestamp, response_time_ms, request_size_bytes,
-        /// response_size_bytes. The sort field is always included in the output.
+        /// response_size_bytes.
         #[arg(long)]
         sort_by: Option<String>,
 
         /// Sort direction, asc or desc (default: asc)
-        ///
-        /// The limit applies after sorting, so desc with --limit returns the newest
-        /// rows, or the largest values of the --sort-by field.
         #[arg(long)]
         sort_direction: Option<String>,
 
@@ -306,6 +304,9 @@ enum Command {
         sample: Option<String>,
 
         /// Maximum number of rows to return
+        ///
+        /// Applied after sorting. Without --sort-by or --sort-direction, these are
+        /// the oldest rows in the time range.
         #[arg(long)]
         limit: Option<i64>,
 
@@ -389,7 +390,7 @@ enum Command {
         ///
         /// parent_span_id, env, scope_name and scope_version also accept is_null and
         /// is_not_null. attributes and events require "key" (the case-sensitive
-        /// attribute name). kind and status values match in any letter case.
+        /// attribute name).
         ///
         /// in/not_in take an array. Omit "value" for exists, not_exists, is_null and
         /// is_not_null. like/ilike use % and _ wildcards; contains is
@@ -419,15 +420,11 @@ enum Command {
 
         /// Field to sort by (default: start_time_ns)
         ///
-        /// Available fields: start_time_ns, end_time_ns, duration_ns. The sort field
-        /// is always included in the output.
+        /// Available fields: start_time_ns, end_time_ns, duration_ns.
         #[arg(long)]
         sort_by: Option<String>,
 
         /// Sort direction, asc or desc (default: asc)
-        ///
-        /// The limit applies after sorting, so desc with --limit returns the newest
-        /// spans, or the largest values of the --sort-by field.
         #[arg(long)]
         sort_direction: Option<String>,
 
@@ -440,7 +437,9 @@ enum Command {
 
         /// Maximum number of spans to return (1 to 1000000; default 1000000)
         ///
-        /// There is no pagination or continuation token.
+        /// Applied after sorting. Without --sort-by or --sort-direction, these are
+        /// the oldest spans in the time range. There is no pagination or
+        /// continuation token.
         #[arg(long)]
         limit: Option<i64>,
 

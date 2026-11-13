@@ -141,7 +141,7 @@ Then fetch the most recent request logs for a specific error to investigate furt
 
 ```
 npx @apitally/cli request-logs <app-id> --since "<since>" \
-  --fields '["timestamp","request_uuid","url","status_code","response_body_json","exception_type","exception_message"]' \
+  --fields '["timestamp","request_uuid","url","status_code","response_body_text","exception_type","exception_message"]' \
   --filters '[{"field":"method","op":"eq","value":"<method>"},{"field":"path","op":"eq","value":"<path>"},{"field":"status_code","op":"eq","value":<status_code>}]' \
   --sort-direction desc --limit 5
 ```
@@ -198,27 +198,6 @@ ORDER BY r.request_uuid, s.start_time_ns, s.span_id;
 
 This can return many rows per request, and multiple requests can share a trace. Use `EXISTS` or deduplication for request counts.
 
-### Trace a consumer's activity
-
-Fetch the consumer's requests by identifier. `timestamp`, `request_uuid`, `trace_id`, `method` and `url` are always included:
-
-```
-npx @apitally/cli request-logs <app-id> --since "<since>" --until "<until>" \
-  --fields '["path","consumer_identifier","status_code","response_time_ms"]' \
-  --filters '[{"field":"consumer_identifier","op":"eq","value":"user@example.com"}]' \
-  --db
-```
-
-```sql
-SELECT timestamp, method, url, status_code, response_time_ms
-FROM request_logs
-WHERE app_id = <app-id>
-  AND timestamp >= '<since>'
-  AND timestamp < '<until>'
-  AND consumer_identifier = 'user@example.com'
-ORDER BY timestamp ASC
-```
-
 ### Query headers
 
 Headers are stored as `STRUCT(name VARCHAR, value VARCHAR)[]`. Use DuckDB list comprehensions:
@@ -243,9 +222,9 @@ WHERE app_id = <app-id>
 
 ### Query JSON fields
 
-Body fields (`request_body_json`, `response_body_json`) are of type `JSON`. Use DuckDB JSON operators and functions. `request_body_text` and `response_body_text` are `VARCHAR` and also hold non-JSON bodies.
+Body fields (`request_body_json`, `response_body_json`) are of type `JSON`. Use DuckDB JSON operators and functions. `request_body_text` and `response_body_text` are `VARCHAR` and hold the body as stored, including non-JSON bodies, on which JSON functions fail.
 
-**Note:** Request/response bodies larger than 50 KB are not captured by the SDKs and will be `NULL`.
+**Note:** Request/response bodies larger than 50 KB are not captured by the SDKs. For these, the JSON columns are `NULL` and the text columns hold `[BODY_TOO_LARGE]`.
 
 ```sql
 SELECT timestamp, method, path,
