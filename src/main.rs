@@ -229,7 +229,7 @@ enum Command {
         /// Always included: timestamp, request_uuid, method, url, trace_id.
         ///
         /// Defaults to timestamp, request_uuid, trace_id, env, method, path, url,
-        /// consumer_id, request_size_bytes, status_code, response_time_ms,
+        /// consumer_identifier, request_size_bytes, status_code, response_time_ms,
         /// response_size_bytes, client_ip, client_country_iso_code.
         /// With --db, refetching replaces whole rows; omitted fields become null.
         ///

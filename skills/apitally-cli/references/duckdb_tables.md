@@ -180,8 +180,7 @@ Databases whose `spans` table has `request_uuid` require an explicit reset and r
 
 ## Relationships
 
-- `request_logs.consumer_id` references `consumers.consumer_id` (join on both `app_id` and `consumer_id`)
-- `metrics.consumer_id` references `consumers.consumer_id` (join on both `app_id` and `consumer_id`, only when metrics are grouped by consumer_id)
+- `request_logs.consumer_identifier` and `metrics.consumer_identifier` match `consumers.identifier` (join on both `app_id` and the identifier; in `metrics` only when grouped by `consumer_identifier`)
 - `endpoints.app_id` references `apps.app_id`
 - `metrics.app_id` references `apps.app_id`
 - `request_logs.app_id` references `apps.app_id`

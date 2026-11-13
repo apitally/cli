@@ -29,7 +29,7 @@ List results and SQL queries output NDJSON to stdout by default. With `--db`, fe
 ## Key Concepts
 
 - **App and environment** — An app is a monitored API application, identified by a numeric `app_id`. Each app has one or more environments (e.g. "prod", "dev"). The `env` field on request logs is a string matching the environment name.
-- **Consumer** — An API client or user tracked by Apitally. `identifier` is a string set by the application (e.g. email, username) to uniquely identify the consumer. `name` is a display name (auto-generated from `identifier` if not explicitly set). `group` is an optional group name. Request logs and metrics expose these as `consumer_identifier`, `consumer_name` and `consumer_group`, for filtering, selecting and grouping. `consumer_id` is a numeric internal ID, used to join to the `consumers` table.
+- **Consumer** — An API client or user tracked by Apitally, identified within an app by its `identifier`, a string set by the application (e.g. email, username). `name` is a display name (generated from the identifier unless set) and `group` an optional group name. Request logs and metrics carry these as `consumer_identifier`, `consumer_name` and `consumer_group`, for selecting, filtering and grouping.
 - **Path vs URL** — `path` is the parameterized route template (e.g. `/users/{user_id}`), good for grouping by endpoint. `url` is the full request URL with actual values and query parameters (e.g. `https://api.example.com/users/123?limit=10`).
 - **Application logs** — Server-side log entries emitted by application code during request handling. Only available via `request-details` as the `logs` field.
 - **Traces and spans** - Spans are OpenTelemetry units of work retrieved through `traces` or `request-details`. Identity is `(app_id, trace_id, span_id)`; parent links use `parent_span_id` within the same app and trace. Spans can exist without request logs. Multiple requests can share a trace.
@@ -63,14 +63,14 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
      npx @apitally/cli endpoints <app-id> [--method <methods>] [--path <pattern>]
      ```
 
-   - **Consumers**: request logs and metrics can be filtered and grouped by `consumer_identifier`, `consumer_name` and `consumer_group` directly (see step 4). Use `consumers` only to list consumers or to select them by attributes. Then filter request logs or metrics by the returned `consumer_id` values with the `in` operator.
+   - **Consumers**: use `consumers` for what request logs and metrics don't carry: custom attributes, and the times of a consumer's first and last request. To limit request logs or metrics to consumers with certain attributes, select their identifiers and filter `consumer_identifier` with the `in` operator.
 
      ```
      npx @apitally/cli consumers <app-id> [--requests-since "<since>"] --db
      ```
 
      ```
-     npx @apitally/cli sql "SELECT consumer_id, identifier, name FROM consumers WHERE app_id = <app-id> AND (attributes->>'$.plan') = 'pro'"
+     npx @apitally/cli sql "SELECT identifier FROM consumers WHERE app_id = <app-id> AND (attributes->>'$.plan') = 'pro'"
      ```
 
 4. **Fetch data** — choose based on the question. Always read the [command reference](references/commands.md) for available options.
@@ -99,7 +99,7 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
      Newest first: `--sort-direction desc --limit 20`
      Slowest first: `--sort-by response_time_ms --sort-direction desc --limit 20`
 
-     Without `--sort-direction desc`, `--limit` returns the oldest rows in the time range. `consumer_identifier`, `consumer_name` and `consumer_group` are not default fields; list them in `--fields` to see them in the rows. `--fields` replaces the defaults.
+     Without `--sort-direction desc`, `--limit` returns the oldest rows in the time range. `--fields` replaces the defaults.
 
    - **Trace spans** - for slow database or external calls, instrumentation scopes, span errors, or events. Use `traces` to discover matching spans, then fetch discovered trace IDs without the discovery filters or sampling to inspect sibling spans. See the trace patterns below and the [full field/filter contract](references/commands.md#traces).
 

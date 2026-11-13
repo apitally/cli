@@ -88,7 +88,7 @@ List all consumers for an app, including their attributes. Outputs NDJSON to std
 Example NDJSON output (without `--db`):
 
 ```json
-{"id":1,"identifier":"bob@example.com","name":"Bob","group":{"id":1,"name":"Admins"},"attributes":{"plan":"pro"},"created_at":"2026-01-01T00:00:00Z","last_request_at":"2026-01-01T01:00:00Z"}
+{"id":1,"identifier":"bob@example.com","name":"Bob","group":"Admins","attributes":{"plan":"pro"},"created_at":"2026-01-01T00:00:00Z","last_request_at":"2026-01-01T01:00:00Z"}
 {"id":2,"identifier":"alice@example.com","name":"Alice","group":null,"attributes":{},"created_at":"2026-01-02T00:00:00Z","last_request_at":"2026-01-02T02:00:00Z"}
 ```
 
@@ -210,8 +210,8 @@ Timestamps without timezone are treated as UTC. Results are ordered by timestamp
 | `method`                  | string                           | yes     |
 | `path`                    | string, nullable                 | yes     |
 | `url`                     | string                           | yes     |
-| `consumer_id`             | int (ID), nullable               | yes     |
-| `consumer_identifier`     | string, nullable                 | no      |
+| `consumer_id`             | int (ID), nullable               | no      |
+| `consumer_identifier`     | string, nullable                 | yes     |
 | `consumer_name`           | string, nullable                 | no      |
 | `consumer_group`          | string, nullable                 | no      |
 | `request_headers`         | array of string tuples (headers) | no      |
@@ -247,7 +247,7 @@ See [Filters](#filters). `key` is:
 Filter `request_body_json` or `response_body_json` to compare a value at a JSONPath in a JSON body. Filter `request_body_text` or `response_body_text`, which take no `key`, to search the whole body as a string, including non-JSON bodies.
 
 ```json
-[{"field":"consumer_id","op":"is_null"}]
+[{"field":"consumer_identifier","op":"is_null"}]
 [{"field":"consumer_identifier","op":"eq","value":"bob@example.com"}]
 [{"field":"url","op":"ilike","value":"%/users/123%"}]
 [{"field":"status_code","op":"gte","value":400}]
@@ -263,8 +263,8 @@ Filter `request_body_json` or `response_body_json` to compare a value at a JSONP
 Example NDJSON output (without `--db`):
 
 ```json
-{"timestamp":"2026-01-01T00:15:00.000Z","request_uuid":"2fbc1df6-3124-4ed1-a376-7d2c64e4d5cf","env":"prod","method":"GET","path":"/test/1","url":"https://api.example.com/test/1","consumer_id":1,"request_size_bytes":0,"status_code":404,"response_time_ms":122,"response_size_bytes":66,"client_ip":"203.0.113.10","client_country_iso_code":"DE"}
-{"timestamp":"2026-01-01T00:16:00.000Z","request_uuid":"c6d32f8a-0bc1-43c1-b6c5-7d04363dc97c","env":"prod","method":"GET","path":"/test/2","url":"https://api.example.com/test/2","consumer_id":1,"request_size_bytes":0,"status_code":500,"response_time_ms":68,"response_size_bytes":66,"client_ip":"198.51.100.22","client_country_iso_code":"US"}
+{"timestamp":"2026-01-01T00:15:00.000Z","request_uuid":"2fbc1df6-3124-4ed1-a376-7d2c64e4d5cf","env":"prod","method":"GET","path":"/test/1","url":"https://api.example.com/test/1","consumer_identifier":"bob@example.com","request_size_bytes":0,"status_code":404,"response_time_ms":122,"response_size_bytes":66,"client_ip":"203.0.113.10","client_country_iso_code":"DE"}
+{"timestamp":"2026-01-01T00:16:00.000Z","request_uuid":"c6d32f8a-0bc1-43c1-b6c5-7d04363dc97c","env":"prod","method":"GET","path":"/test/2","url":"https://api.example.com/test/2","consumer_identifier":"bob@example.com","request_size_bytes":0,"status_code":500,"response_time_ms":68,"response_size_bytes":66,"client_ip":"198.51.100.22","client_country_iso_code":"US"}
 ```
 
 ## `request-details`

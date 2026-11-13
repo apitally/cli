@@ -8,6 +8,23 @@ use duckdb::vtab::arrow::{ArrowBatchRegistration, ArrowVTab};
 use crate::auth::{resolve_api_base_url, resolve_api_key};
 use crate::utils::{api_post, input_err, open_db, parse_string_list, resolve_relative_datetime};
 
+const DEFAULT_FIELDS: [&str; 14] = [
+    "timestamp",
+    "request_uuid",
+    "trace_id",
+    "env",
+    "method",
+    "path",
+    "url",
+    "consumer_identifier",
+    "request_size_bytes",
+    "status_code",
+    "response_time_ms",
+    "response_size_bytes",
+    "client_ip",
+    "client_country_iso_code",
+];
+
 pub(crate) fn ensure_request_logs_table(conn: &duckdb::Connection) -> Result<()> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS request_logs (
@@ -80,10 +97,11 @@ pub fn run(
     if let Some(until) = until {
         body["until"] = resolve_relative_datetime(until).into();
     }
-    if let Some(fields) = fields {
-        body["fields"] = parse_string_list(fields)
-            .map_err(|e| input_err(format!("invalid JSON for --fields: {e}")))?;
-    }
+    body["fields"] = match fields {
+        Some(fields) => parse_string_list(fields)
+            .map_err(|e| input_err(format!("invalid JSON for --fields: {e}")))?,
+        None => DEFAULT_FIELDS.as_slice().into(),
+    };
     if let Some(filters) = filters {
         let filters_value: serde_json::Value = serde_json::from_str(filters)
             .map_err(|e| input_err(format!("invalid JSON for --filters: {e}")))?;
@@ -370,6 +388,7 @@ mod tests {
             .mock("POST", "/v1/apps/1/request-logs")
             .match_body(mockito::Matcher::Json(serde_json::json!({
                 "format": "ndjson",
+                "fields": DEFAULT_FIELDS,
                 "filters": [{"field": "request_uuid", "op": "eq", "value": "abc"}],
                 "sort_by": {"field": "response_time_ms", "direction": "desc"},
             })))
