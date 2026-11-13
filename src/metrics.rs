@@ -16,6 +16,9 @@ pub(crate) fn ensure_metrics_table(conn: &duckdb::Connection) -> Result<()> {
             period_end          TIMESTAMPTZ NOT NULL,
             env                 VARCHAR,
             consumer_id         BIGINT,
+            consumer_identifier VARCHAR,
+            consumer_name       VARCHAR,
+            consumer_group      VARCHAR,
             method              VARCHAR,
             path                VARCHAR,
             status_code         INTEGER,
@@ -37,7 +40,10 @@ pub(crate) fn ensure_metrics_table(conn: &duckdb::Connection) -> Result<()> {
         ALTER TABLE metrics ADD COLUMN IF NOT EXISTS response_time_p90 INTEGER;
         ALTER TABLE metrics ADD COLUMN IF NOT EXISTS response_time_p99 INTEGER;
         ALTER TABLE metrics ADD COLUMN IF NOT EXISTS consumers BIGINT;
-        ALTER TABLE metrics ADD COLUMN IF NOT EXISTS apdex_score DOUBLE;",
+        ALTER TABLE metrics ADD COLUMN IF NOT EXISTS apdex_score DOUBLE;
+        ALTER TABLE metrics ADD COLUMN IF NOT EXISTS consumer_identifier VARCHAR;
+        ALTER TABLE metrics ADD COLUMN IF NOT EXISTS consumer_name VARCHAR;
+        ALTER TABLE metrics ADD COLUMN IF NOT EXISTS consumer_group VARCHAR;",
     )?;
     Ok(())
 }
@@ -181,6 +187,9 @@ mod tests {
                 false,
             ),
             Field::new("method", DataType::Utf8, true),
+            Field::new("consumer_identifier", DataType::Utf8, true),
+            Field::new("consumer_name", DataType::Utf8, true),
+            Field::new("consumer_group", DataType::Utf8, true),
             Field::new("requests", DataType::Int64, false),
             Field::new("consumers", DataType::Int64, false),
             Field::new("error_rate", DataType::Float64, false),
@@ -202,6 +211,9 @@ mod tests {
                     .with_timezone("UTC"),
                 ),
                 Arc::new(StringArray::from(vec![Some("GET"); ROW_COUNT])),
+                Arc::new(StringArray::from(vec![Some("bob@example.com"); ROW_COUNT])),
+                Arc::new(StringArray::from(vec![Some("Bob"); ROW_COUNT])),
+                Arc::new(StringArray::from(vec![Some("Admins"); ROW_COUNT])),
                 Arc::new(Int64Array::from(vec![100; ROW_COUNT])),
                 Arc::new(Int64Array::from(vec![3; ROW_COUNT])),
                 Arc::new(Float64Array::from(vec![0.05; ROW_COUNT])),
@@ -272,7 +284,7 @@ mod tests {
             None,
             r#"["requests","consumers","error_rate","apdex_score"]"#,
             Some("hour"),
-            Some(r#"["method"]"#),
+            Some(r#"["method","consumer_identifier","consumer_name","consumer_group"]"#),
             None,
             None,
             Some(&db_path),
@@ -289,6 +301,7 @@ mod tests {
             .query_row(
                 "SELECT count(*), count(DISTINCT period_start), count(*) FILTER (
                     WHERE app_id = 1 AND method = 'GET' AND requests = 100 AND consumers = 3 AND error_rate = 0.05 AND apdex_score = 0.9
+                    AND consumer_identifier = 'bob@example.com' AND consumer_name = 'Bob' AND consumer_group = 'Admins'
                     AND epoch_ms(period_end) - epoch_ms(period_start) = 3600000
                  ) FROM metrics",
                 [],

@@ -156,23 +156,29 @@ enum Command {
 
         /// JSON array or comma-separated list of field names to group by (in addition to time interval)
         ///
-        /// Available fields: env, consumer_id, method, path, status_code.
+        /// Available fields: env, consumer_id, consumer_identifier, consumer_name,
+        /// consumer_group, method, path, status_code.
         #[arg(long)]
         group_by: Option<String>,
 
         /// JSON array of filter objects with "field", "op" and "value" keys, combined with AND
         ///
         /// Fields and operators:
-        ///   env, method, path: eq, neq, in, not_in, like, not_like, ilike, not_ilike, contains, not_contains
+        ///   env, method, path, consumer_identifier, consumer_name, consumer_group: eq, neq, in, not_in, like, not_like, ilike, not_ilike, contains, not_contains
         ///   status_code: eq, neq, gt, gte, lt, lte, in, not_in
-        ///   consumer_id: eq, neq, in, not_in, is_null, is_not_null
+        ///   consumer_id: eq, neq, in, not_in
         ///
-        /// in/not_in take an array and not_in also matches null. Omit "value" for
-        /// is_null and is_not_null.
+        /// The consumer fields also accept is_null and is_not_null.
+        ///
+        /// in/not_in take an array. Omit "value" for is_null and is_not_null.
+        /// like/ilike use % and _ wildcards; contains is case-insensitive. neq and
+        /// the not_ operators also match rows where the field is null; add
+        /// is_not_null on the same field to exclude them.
         ///
         /// Examples:
         ///   [{"field":"method","op":"eq","value":"GET"}]
         ///   [{"field":"status_code","op":"gte","value":400}]
+        ///   [{"field":"consumer_identifier","op":"eq","value":"user@example.com"}]
         #[arg(long, verbatim_doc_comment)]
         filters: Option<String>,
 
@@ -201,8 +207,10 @@ enum Command {
         app_id: i64,
 
         /// Since datetime (ISO 8601 or relative duration, e.g. 24h, 7d)
+        ///
+        /// Required unless filters contain a request_uuid eq/in lookup.
         #[arg(long)]
-        since: String,
+        since: Option<String>,
 
         /// Until datetime (ISO 8601 or relative duration, e.g. 24h, 7d; defaults to now)
         #[arg(long)]
@@ -211,21 +219,26 @@ enum Command {
         /// JSON array or comma-separated list of field names to include
         ///
         /// Available fields: timestamp, request_uuid, env, method, path,
-        /// url, consumer_id, request_headers, request_size_bytes, request_body_json,
+        /// url, consumer_id, consumer_identifier, consumer_name, consumer_group,
+        /// request_headers, request_size_bytes, request_body_json, request_body_text,
         /// status_code, response_time_ms, response_headers, response_size_bytes,
-        /// response_body_json, client_ip, client_country_iso_code, custom_attributes,
-        /// exception_type, exception_message, exception_stacktrace, sentry_event_id,
-        /// trace_id.
+        /// response_body_json, response_body_text, client_ip, client_country_iso_code,
+        /// custom_attributes, exception_type, exception_message, exception_stacktrace,
+        /// sentry_event_id, trace_id.
         ///
         /// Always included: timestamp, request_uuid, method, url, trace_id.
         ///
-        /// Defaults to all fields except request_headers, request_body_json,
-        /// response_headers, response_body_json, custom_attributes, exception_type,
-        /// exception_message, exception_stacktrace, sentry_event_id.
+        /// Defaults to timestamp, request_uuid, trace_id, env, method, path, url,
+        /// consumer_identifier, request_size_bytes, status_code, response_time_ms,
+        /// response_size_bytes, client_ip, client_country_iso_code.
         /// With --db, refetching replaces whole rows; omitted fields become null.
         ///
-        /// custom_attributes is an object mapping attribute names to JSON values
-        /// ({} when none are set).
+        /// request_body_text and response_body_text return the body as stored, or
+        /// [BODY_TOO_LARGE] (over 50 KB) or [REDACTED] in its place.
+        /// request_body_json and response_body_json return the same body only if
+        /// it is valid JSON, and null otherwise; select them instead of the text
+        /// fields to run SQL JSON functions on the body. custom_attributes is an
+        /// object mapping attribute names to JSON values ({} when none are set).
         #[arg(long)]
         fields: Option<String>,
 
@@ -236,25 +249,51 @@ enum Command {
         ///   datetime (timestamp): eq, neq, gt, gte, lt, lte
         ///   ID (request_uuid, consumer_id, trace_id, sentry_event_id): eq, neq, in, not_in
         ///   headers (request_headers, response_headers): string operators, exists, not_exists
-        ///   custom_attributes: operators of the attribute value's type, exists, not_exists
+        ///   custom_attributes, request_body_json, response_body_json: operators of the value's type, exists, not_exists, is_null, is_not_null
         ///   string (all other fields): eq, neq, in, not_in, like, not_like, ilike, not_ilike, contains, not_contains
         ///
         /// String and ID fields except request_uuid, env, method and url also accept
-        /// is_null and is_not_null. Headers and custom_attributes require "key" (the
-        /// header name or the case-sensitive attribute name).
+        /// is_null and is_not_null.
         ///
-        /// in/not_in take an array and not_in also matches null. Omit "value" for
-        /// exists, not_exists, is_null and is_not_null. like/ilike use % and _
-        /// wildcards; contains is case-insensitive. Attribute comparisons only match
-        /// when the key exists with a value of the same JSON type, including neq and
-        /// not_in.
+        /// Headers, custom_attributes and JSON bodies require "key": the header name
+        /// (any letter case), the case-sensitive attribute name, or a JSONPath to
+        /// values in the body, such as $.customer.country or $.items[*].sku. A
+        /// filter matches if any value of the key matches.
+        ///
+        /// in/not_in take an array. Omit "value" for exists, not_exists, is_null and
+        /// is_not_null. like/ilike use % and _ wildcards; contains is
+        /// case-insensitive.
+        ///
+        /// neq, not_in, not_like, not_ilike and not_contains match every row the
+        /// positive operator doesn't, including rows where the field or key is
+        /// missing or null. Add is_not_null on the same field, or exists on the same
+        /// key, to exclude those rows.
+        ///
+        /// For custom_attributes and JSON bodies, eq, neq, in and not_in also
+        /// compare values as text, so "42" matches 42. Other operators only match
+        /// values of the same JSON type as the filter value. is_null matches a key
+        /// holding JSON null; use not_exists for a missing key.
         ///
         /// Examples:
         ///   [{"field":"status_code","op":"gte","value":400}]
+        ///   [{"field":"consumer_identifier","op":"eq","value":"user@example.com"}]
         ///   [{"field":"request_headers","key":"content-type","op":"eq","value":"application/json"}]
         ///   [{"field":"custom_attributes","key":"tenant.id","op":"eq","value":"acme"}]
+        ///   [{"field":"response_body_json","key":"$.error.code","op":"eq","value":"invalid_token"}]
+        ///   [{"field":"response_body_text","op":"contains","value":"timeout"}]
         #[arg(long, verbatim_doc_comment)]
         filters: Option<String>,
+
+        /// Field to sort by (default: timestamp)
+        ///
+        /// Available fields: timestamp, response_time_ms, request_size_bytes,
+        /// response_size_bytes.
+        #[arg(long)]
+        sort_by: Option<String>,
+
+        /// Sort direction, asc or desc (default: asc)
+        #[arg(long)]
+        sort_direction: Option<String>,
 
         /// Approximate sample size (integer) or sample rate (float > 0 and <= 0.5)
         ///
@@ -265,6 +304,9 @@ enum Command {
         sample: Option<String>,
 
         /// Maximum number of rows to return
+        ///
+        /// Applied after sorting. Without --sort-by or --sort-direction, these are
+        /// the oldest rows in the time range.
         #[arg(long)]
         limit: Option<i64>,
 
@@ -277,8 +319,9 @@ enum Command {
 
     /// Retrieve trace spans for an app
     ///
-    /// Outputs newline-delimited JSON (one span per line), ordered by start time,
-    /// trace ID and span ID ascending. Filters select spans, not complete traces.
+    /// Outputs newline-delimited JSON (one span per line), ordered by start time
+    /// ascending unless --sort-by or --sort-direction is given. Filters select
+    /// spans, not complete traces.
     /// Sampling, limits and time bounds can leave traces incomplete. Matching
     /// request logs need not exist. To expand a discovered trace, fetch its trace ID
     /// without discovery filters, sampling or unnecessary time bounds.
@@ -343,18 +386,29 @@ enum Command {
         ///   string (env, name, scope_name, scope_version): eq, neq, in, not_in, like, not_like, ilike, not_ilike, contains, not_contains
         ///   int (start_time_ns, end_time_ns, duration_ns): eq, neq, gt, gte, lt, lte, in, not_in
         ///   enum (kind, status), ID (trace_id, span_id, parent_span_id): eq, neq, in, not_in
-        ///   attributes, events: operators of the attribute value's type, exists, not_exists
+        ///   attributes, events: operators of the attribute value's type, exists, not_exists, is_null, is_not_null
         ///
         /// parent_span_id, env, scope_name and scope_version also accept is_null and
         /// is_not_null. attributes and events require "key" (the case-sensitive
         /// attribute name).
         ///
-        /// in/not_in take an array and not_in also matches null. Omit "value" for
-        /// exists, not_exists, is_null and is_not_null. like/ilike use % and _
-        /// wildcards; contains is case-insensitive. Attribute comparisons only match
-        /// when the key exists with a value of the same JSON type, including neq and
-        /// not_in. An events filter matches if any event of the span matches, and
-        /// separate filters may match different events.
+        /// in/not_in take an array. Omit "value" for exists, not_exists, is_null and
+        /// is_not_null. like/ilike use % and _ wildcards; contains is
+        /// case-insensitive.
+        ///
+        /// neq, not_in, not_like, not_ilike and not_contains match every span the
+        /// positive operator doesn't, including spans where the field or key is
+        /// missing or null. Add is_not_null on the same field, or exists on the same
+        /// key, to exclude those spans.
+        ///
+        /// For attributes and events, eq, neq, in and not_in also compare values as
+        /// text, so "42" matches 42. Other operators only match values of the same
+        /// JSON type as the filter value. is_null matches a key holding JSON null;
+        /// use not_exists for a missing key.
+        ///
+        /// An events filter matches if any event of the span matches, and separate
+        /// filters may match different events. With neq, not_exists and the other
+        /// not_ operators, it matches if no event matches.
         ///
         /// Examples:
         ///   [{"field":"trace_id","op":"eq","value":"0123456789abcdef0123456789abcdef"}]
@@ -363,6 +417,16 @@ enum Command {
         ///   [{"field":"events","key":"exception.type","op":"exists"}]
         #[arg(long, verbatim_doc_comment)]
         filters: Option<String>,
+
+        /// Field to sort by (default: start_time_ns)
+        ///
+        /// Available fields: start_time_ns, end_time_ns, duration_ns.
+        #[arg(long)]
+        sort_by: Option<String>,
+
+        /// Sort direction, asc or desc (default: asc)
+        #[arg(long)]
+        sort_direction: Option<String>,
 
         /// Approximate sample size (integer) or sample rate (float > 0 and <= 0.5)
         ///
@@ -373,7 +437,9 @@ enum Command {
 
         /// Maximum number of spans to return (1 to 1000000; default 1000000)
         ///
-        /// There is no pagination or continuation token.
+        /// Applied after sorting. Without --sort-by or --sort-direction, these are
+        /// the oldest spans in the time range. There is no pagination or
+        /// continuation token.
         #[arg(long)]
         limit: Option<i64>,
 
@@ -390,7 +456,8 @@ enum Command {
     /// Get details for a specific request
     ///
     /// Outputs a JSON object with full request details including headers, body,
-    /// application logs, and spans.
+    /// application logs, and spans. Application logs and spans are only returned
+    /// if their timestamps are within 1 hour of the request's timestamp.
     /// With --db, upserts the request into `request_logs`, inserts application
     /// logs, and replaces matching (app_id, trace_id, span_id) rows in `spans`.
     /// Span fields absent from this response (env, events, scope_name and
@@ -544,6 +611,8 @@ fn run(cli: Cli) -> Result<()> {
             until,
             fields,
             filters,
+            sort_by,
+            sort_direction,
             sample,
             limit,
             db,
@@ -551,10 +620,12 @@ fn run(cli: Cli) -> Result<()> {
             let db = utils::resolve_db(db)?;
             request_logs::run(
                 app_id,
-                &since,
+                since.as_deref(),
                 until.as_deref(),
                 fields.as_deref(),
                 filters.as_deref(),
+                sort_by.as_deref(),
+                sort_direction.as_deref(),
                 sample.as_deref(),
                 limit,
                 db.as_deref(),
@@ -570,6 +641,8 @@ fn run(cli: Cli) -> Result<()> {
             until,
             fields,
             filters,
+            sort_by,
+            sort_direction,
             sample,
             limit,
             db,
@@ -581,6 +654,8 @@ fn run(cli: Cli) -> Result<()> {
                 until.as_deref(),
                 fields.as_deref(),
                 filters.as_deref(),
+                sort_by.as_deref(),
+                sort_direction.as_deref(),
                 sample.as_deref(),
                 limit,
                 db.as_deref(),
@@ -649,7 +724,6 @@ mod tests {
         assert!(
             Cli::try_parse_from(["apitally", "metrics", "42", "--since", "2025-01-01"]).is_err()
         ); // missing --metrics
-        assert!(Cli::try_parse_from(["apitally", "request-logs", "42"]).is_err()); // missing --since
         assert!(Cli::try_parse_from(["apitally", "request-details", "42"]).is_err()); // missing request_uuid
         assert!(Cli::try_parse_from(["apitally", "traces"]).is_err()); // missing app_id
         assert!(Cli::try_parse_from(["apitally", "sql", "SELECT 1", "--db"]).is_err()); // missing db path

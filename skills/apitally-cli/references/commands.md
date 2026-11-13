@@ -15,9 +15,22 @@ Datetime flags (e.g. `--since`, `--until`, `--requests-since`) accept ISO 8601 s
 - **datetime**: `eq`, `neq`, `gt`, `gte`, `lt`, `lte` (ISO 8601 value)
 - **ID, enum**: `eq`, `neq`, `in`, `not_in`
 - **nullable** fields also accept `is_null`, `is_not_null`
-- **headers, attributes, events**: require `key`; operators follow the value type, plus `exists`, `not_exists`. Attribute comparisons only match when the key exists with a value of the same JSON type, including `neq` and `not_in`. An `events` filter matches if any event of the span matches, and separate filters may match different events.
+- **headers**: require `key`; string operators, plus `exists`, `not_exists`
+- **attributes, events, JSON bodies**: require `key`; operators follow the type of the filter value (string, number or boolean), plus `exists`, `not_exists`, `is_null`, `is_not_null`
 
-`in`/`not_in` take an array, and `not_in` also matches null. Omit `value` for `exists`, `not_exists`, `is_null`, `is_not_null`. `like`/`ilike` use `%` and `_` wildcards; `contains` is case-insensitive.
+`in`/`not_in` take an array. Omit `value` for `exists`, `not_exists`, `is_null`, `is_not_null`. `like`/`ilike` use `%` and `_` wildcards; `contains` is case-insensitive.
+
+**Negated operators:** `neq`, `not_in`, `not_like`, `not_ilike` and `not_contains` match every row the positive operator doesn't, including rows where the field or key is missing or null. Add `is_not_null` on the same field, or `exists` on the same key, to exclude those rows:
+
+```json
+[{"field":"consumer_identifier","op":"neq","value":"bob@example.com"},{"field":"consumer_identifier","op":"is_not_null"}]
+```
+
+**Keys with several values:** a key can select several values (a repeated header, a JSONPath with `[*]`, several events of a span). A filter matches if any value matches, and a negated filter matches if none does. Separate `events` filters may match different events.
+
+**Value types under a key:** for attributes, events and JSON bodies, `eq`, `neq`, `in` and `not_in` also compare values as text, so `"42"` matches `42` and `"true"` matches `true`. Range and pattern operators only match values of the same JSON type as the filter value. `is_null` matches a key holding JSON `null`; use `not_exists` for a missing key.
+
+**Limits:** 20 filters per request, 1,000 values per `in`/`not_in` list, and 1,000 characters per string value or key.
 
 ## `auth`
 
@@ -67,7 +80,7 @@ Example NDJSON output (without `--db`):
 npx @apitally/cli consumers <app-id> [--requests-since <datetime>] [--db [<path>]]
 ```
 
-List all consumers for an app. Use this to map consumer IDs in request logs to identifiers and names. Outputs NDJSON to stdout by default.
+List all consumers for an app, including their attributes. Outputs NDJSON to stdout by default.
 
 - `--requests-since`: Only return consumers active since this datetime (ISO 8601 or relative duration, e.g. 24h, 7d)
 - `--db`: Write to `consumers` table in DuckDB instead of outputting NDJSON to stdout
@@ -75,7 +88,7 @@ List all consumers for an app. Use this to map consumer IDs in request logs to i
 Example NDJSON output (without `--db`):
 
 ```json
-{"id":1,"identifier":"bob@example.com","name":"Bob","group":{"id":1,"name":"Admins"},"attributes":{"plan":"pro"},"created_at":"2026-01-01T00:00:00Z","last_request_at":"2026-01-01T01:00:00Z"}
+{"id":1,"identifier":"bob@example.com","name":"Bob","group":"Admins","attributes":{"plan":"pro"},"created_at":"2026-01-01T00:00:00Z","last_request_at":"2026-01-01T01:00:00Z"}
 {"id":2,"identifier":"alice@example.com","name":"Alice","group":null,"attributes":{},"created_at":"2026-01-02T00:00:00Z","last_request_at":"2026-01-02T02:00:00Z"}
 ```
 
@@ -140,16 +153,20 @@ Fetch aggregated metrics for an app. Outputs NDJSON to stdout by default.
 
 ### Group-by fields
 
-`env`, `consumer_id`, `method`, `path`, `status_code`
+`env`, `consumer_id`, `consumer_identifier`, `consumer_name`, `consumer_group`, `method`, `path`, `status_code`
+
+The consumer fields are null for requests without a consumer, and `consumer_group` is also null for consumers without a group.
 
 ### Filters
 
-Filter fields: `env`, `method`, `path` (string), `status_code` (int), `consumer_id` (ID, nullable). See [Filters](#filters) for operators.
+Filter fields: `env`, `method`, `path` (string), `consumer_identifier`, `consumer_name`, `consumer_group` (string, nullable), `status_code` (int), `consumer_id` (ID, nullable). See [Filters](#filters) for operators.
 
 ```json
 [{"field":"method","op":"eq","value":"GET"}]
 [{"field":"path","op":"like","value":"/v1/users/%"}]
 [{"field":"status_code","op":"gte","value":400}]
+[{"field":"consumer_identifier","op":"eq","value":"bob@example.com"}]
+[{"field":"consumer_group","op":"in","value":["Admins","Partners"]}]
 ```
 
 Example NDJSON output (without `--db`):
@@ -162,22 +179,25 @@ Example NDJSON output (without `--db`):
 ## `request-logs`
 
 ```
-npx @apitally/cli request-logs <app-id> --since <datetime> \
+npx @apitally/cli request-logs <app-id> [--since <datetime>] \
   [--until <datetime>] [--fields <json>] [--filters <json>] \
+  [--sort-by <field>] [--sort-direction <asc|desc>] \
   [--sample <n|rate>] [--limit <n>] [--db [<path>]]
 ```
 
 Fetch request log data for an app. Outputs NDJSON to stdout by default.
 
-- `--since`: Start of time range, inclusive (ISO 8601 or relative duration, required)
+- `--since`: Start of time range, inclusive (ISO 8601 or relative duration); required unless a `request_uuid` filter uses `eq` or `in`
 - `--until`: End of time range, exclusive (ISO 8601 or relative duration, defaults to now)
 - `--fields`: Comma-separated list or JSON array of field names to include
 - `--filters`: JSON array of filter objects
+- `--sort-by`: Field to sort by: `timestamp` (default), `response_time_ms`, `request_size_bytes` or `response_size_bytes`
+- `--sort-direction`: `asc` (default) or `desc`
 - `--sample`: Approximate sample size (integer, e.g. `1000`) or sample rate (float > 0 and <= 0.5, e.g. `0.1` for ~10%)
-- `--limit`: Maximum number of rows (hard cap: 1,000,000)
+- `--limit`: Maximum number of rows (hard cap: 1,000,000), applied after sorting; without sort flags, these are the oldest rows in the time range
 - `--db`: Write to `request_logs` table in DuckDB instead of outputting NDJSON to stdout
 
-Timestamps without timezone are treated as UTC. Results are ordered by timestamp ascending.
+Timestamps without timezone are treated as UTC. Results are ordered by timestamp ascending by default.
 
 ### Fields
 
@@ -190,15 +210,20 @@ Timestamps without timezone are treated as UTC. Results are ordered by timestamp
 | `method`                  | string                           | yes     |
 | `path`                    | string, nullable                 | yes     |
 | `url`                     | string                           | yes     |
-| `consumer_id`             | int (ID), nullable               | yes     |
+| `consumer_id`             | int (ID), nullable               | no      |
+| `consumer_identifier`     | string, nullable                 | yes     |
+| `consumer_name`           | string, nullable                 | no      |
+| `consumer_group`          | string, nullable                 | no      |
 | `request_headers`         | array of string tuples (headers) | no      |
 | `request_size_bytes`      | int                              | yes     |
 | `request_body_json`       | string (JSON), nullable          | no      |
+| `request_body_text`       | string, nullable                 | no      |
 | `status_code`             | int                              | yes     |
 | `response_time_ms`        | int                              | yes     |
 | `response_headers`        | array of string tuples (headers) | no      |
 | `response_size_bytes`     | int                              | yes     |
 | `response_body_json`      | string (JSON), nullable          | no      |
+| `response_body_text`      | string, nullable                 | no      |
 | `client_ip`               | string, nullable                 | yes     |
 | `client_country_iso_code` | string, nullable                 | yes     |
 | `custom_attributes`       | object                           | no      |
@@ -209,25 +234,37 @@ Timestamps without timezone are treated as UTC. Results are ordered by timestamp
 
 Default fields are included when `--fields` is omitted. Providing `--fields` replaces the defaults, but `timestamp`, `request_uuid`, `trace_id`, `method`, and `url` are always included. With `--db`, refetching replaces complete matching rows and sets omitted columns to `NULL`.
 
+`request_body_text` and `response_body_text` return the body as stored: JSON, NDJSON, plain text or Markdown, or `[BODY_TOO_LARGE]` (over 50 KB) or `[REDACTED]` in place of the body. `request_body_json` and `response_body_json` return the same body only if it is valid JSON, and null otherwise. Select one of the two, not both. Select the text field unless you will run SQL JSON functions on the body, which fail on values that are not valid JSON.
+
 ### Filters
 
-See [Filters](#filters). `key` is the header name for `request_headers` and `response_headers`, and the case-sensitive attribute name for `custom_attributes`.
+See [Filters](#filters). `key` is:
+
+- the header name (any letter case) for `request_headers` and `response_headers`
+- the case-sensitive attribute name for `custom_attributes`
+- a JSONPath to values in the body for `request_body_json` and `response_body_json`, such as `$.customer.country` or `$.items[*].sku`. Supported are property names (`.name` or `['name']`), list positions (`[0]`) and `[*]` for all items of a list
+
+Filter `request_body_json` or `response_body_json` to compare a value at a JSONPath in a JSON body. Filter `request_body_text` or `response_body_text`, which take no `key`, to search the whole body as a string, including non-JSON bodies.
 
 ```json
-[{"field":"consumer_id","op":"is_null"}]
+[{"field":"consumer_identifier","op":"is_null"}]
+[{"field":"consumer_identifier","op":"eq","value":"bob@example.com"}]
 [{"field":"url","op":"ilike","value":"%/users/123%"}]
 [{"field":"status_code","op":"gte","value":400}]
+[{"field":"request_uuid","op":"eq","value":"2fbc1df6-3124-4ed1-a376-7d2c64e4d5cf"}]
 [{"field":"request_headers","key":"x-api-version","op":"exists"}]
 [{"field":"request_headers","key":"content-type","op":"eq","value":"application/json"}]
-[{"field":"response_body_json","op":"contains","value":"error"}]
+[{"field":"response_body_json","key":"$.error.code","op":"eq","value":"invalid_token"}]
+[{"field":"request_body_json","key":"$.items[*].sku","op":"in","value":["A-1","B-2"]}]
+[{"field":"response_body_text","op":"contains","value":"error"}]
 [{"field":"custom_attributes","key":"tenant.id","op":"eq","value":"acme"}]
 ```
 
 Example NDJSON output (without `--db`):
 
 ```json
-{"timestamp":"2026-01-01T00:15:00.000Z","request_uuid":"2fbc1df6-3124-4ed1-a376-7d2c64e4d5cf","env":"prod","method":"GET","path":"/test/1","url":"https://api.example.com/test/1","consumer_id":1,"request_size_bytes":0,"status_code":404,"response_time_ms":122,"response_size_bytes":66,"client_ip":"203.0.113.10","client_country_iso_code":"DE"}
-{"timestamp":"2026-01-01T00:16:00.000Z","request_uuid":"c6d32f8a-0bc1-43c1-b6c5-7d04363dc97c","env":"prod","method":"GET","path":"/test/2","url":"https://api.example.com/test/2","consumer_id":1,"request_size_bytes":0,"status_code":500,"response_time_ms":68,"response_size_bytes":66,"client_ip":"198.51.100.22","client_country_iso_code":"US"}
+{"timestamp":"2026-01-01T00:15:00.000Z","request_uuid":"2fbc1df6-3124-4ed1-a376-7d2c64e4d5cf","env":"prod","method":"GET","path":"/test/1","url":"https://api.example.com/test/1","consumer_identifier":"bob@example.com","request_size_bytes":0,"status_code":404,"response_time_ms":122,"response_size_bytes":66,"client_ip":"203.0.113.10","client_country_iso_code":"DE"}
+{"timestamp":"2026-01-01T00:16:00.000Z","request_uuid":"c6d32f8a-0bc1-43c1-b6c5-7d04363dc97c","env":"prod","method":"GET","path":"/test/2","url":"https://api.example.com/test/2","consumer_identifier":"bob@example.com","request_size_bytes":0,"status_code":500,"response_time_ms":68,"response_size_bytes":66,"client_ip":"198.51.100.22","client_country_iso_code":"US"}
 ```
 
 ## `request-details`
@@ -253,7 +290,7 @@ Example JSON output (without `--db`):
 
 <!-- prettier-ignore -->
 ```json
-{"timestamp":"2026-01-01T00:15:00.000Z","request_uuid":"2fbc1df6-3124-4ed1-a376-7d2c64e4d5cf","env":"prod","method":"GET","path":"/test/1","url":"https://api.example.com/test/1","consumer_id":1,"request_headers":[["content-type","application/json"]],"request_size_bytes":0,"request_body_json":null,"status_code":200,"response_time_ms":122,"response_headers":[["x-request-id","abc"]],"response_size_bytes":66,"response_body_json":"{\"ok\":true}","client_ip":"203.0.113.10","client_country_iso_code":"DE","custom_attributes":{"tenant.id":"acme"},"trace_id":"0123456789abcdef0123456789abcdef","exception":null,"logs":[{"timestamp":"2026-01-01T00:15:00.100Z","message":"handling request","level":"INFO","logger":"app","file":"main.py","line":42}],"spans":[{"span_id":"0123456789abcdef","parent_span_id":null,"name":"GET /test/1","kind":"SERVER","start_time_ns":1767226500000000000,"end_time_ns":1767226500050000000,"duration_ns":50000000,"status":"OK","attributes":{"http.method":"GET"}}]}
+{"timestamp":"2026-01-01T00:15:00.000Z","request_uuid":"2fbc1df6-3124-4ed1-a376-7d2c64e4d5cf","env":"prod","method":"GET","path":"/test/1","url":"https://api.example.com/test/1","consumer_id":1,"consumer_identifier":"bob@example.com","request_headers":[["content-type","application/json"]],"request_size_bytes":0,"request_body_json":null,"status_code":200,"response_time_ms":122,"response_headers":[["x-request-id","abc"]],"response_size_bytes":66,"response_body_json":"{\"ok\":true}","client_ip":"203.0.113.10","client_country_iso_code":"DE","custom_attributes":{"tenant.id":"acme"},"trace_id":"0123456789abcdef0123456789abcdef","exception":null,"logs":[{"timestamp":"2026-01-01T00:15:00.100Z","message":"handling request","level":"INFO","logger":"app","file":"main.py","line":42}],"spans":[{"span_id":"0123456789abcdef","parent_span_id":null,"name":"GET /test/1","kind":"SERVER","start_time_ns":1767226500000000000,"end_time_ns":1767226500050000000,"duration_ns":50000000,"status":"OK","attributes":{"http.method":"GET"}}]}
 ```
 
 ## `traces`
@@ -261,6 +298,7 @@ Example JSON output (without `--db`):
 ```
 npx @apitally/cli traces <app-id> [--since <datetime>] \
   [--until <datetime>] [--fields <json>] [--filters <json>] \
+  [--sort-by <field>] [--sort-direction <asc|desc>] \
   [--sample <n|rate>] [--limit <n>] [--db [<path>]]
 ```
 
@@ -270,11 +308,13 @@ Fetch trace spans for an app. Outputs NDJSON to stdout by default, with one span
 - `--until`: Span start time, exclusive; defaults to now
 - `--fields`: Comma-separated list or JSON array of field names to include
 - `--filters`: JSON array of filter objects
+- `--sort-by`: Field to sort by: `start_time_ns` (default), `end_time_ns` or `duration_ns`
+- `--sort-direction`: `asc` (default) or `desc`
 - `--sample`: Approximate sample size (positive integer, e.g. `1000`) or sample rate (float > 0 and <= 0.5, e.g. `0.1`)
-- `--limit`: Maximum number of spans, from 1 to 1,000,000 (default: 1,000,000)
+- `--limit`: Maximum number of spans, from 1 to 1,000,000 (default: 1,000,000), applied after sorting; without sort flags, these are the oldest spans in the time range
 - `--db`: Write to `spans` table in DuckDB instead of outputting NDJSON to stdout
 
-Timestamps without timezone are treated as UTC. Results are ordered by start time.
+Timestamps without timezone are treated as UTC. Results are ordered by start time ascending by default.
 
 Filters and sampling select individual spans, not whole traces. To fetch related spans, query their trace IDs without other filters, sampling, or time bounds; the limit still applies.
 

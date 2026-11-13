@@ -15,6 +15,8 @@ pub fn run(
     until: Option<&str>,
     fields: Option<&str>,
     filters: Option<&str>,
+    sort_by: Option<&str>,
+    sort_direction: Option<&str>,
     sample: Option<&str>,
     limit: Option<i64>,
     db: Option<&Path>,
@@ -42,6 +44,12 @@ pub fn run(
         let filters_value: serde_json::Value = serde_json::from_str(filters)
             .map_err(|e| input_err(format!("invalid JSON for --filters: {e}")))?;
         body["filters"] = filters_value;
+    }
+    if let Some(sort_by) = sort_by {
+        body["sort_by"]["field"] = sort_by.into();
+    }
+    if let Some(sort_direction) = sort_direction {
+        body["sort_by"]["direction"] = sort_direction.into();
     }
     if let Some(sample) = sample {
         if let Ok(n) = sample.parse::<i64>() {
@@ -242,7 +250,8 @@ mod tests {
             .match_header("api-key", "test-key")
             .match_body(mockito::Matcher::Json(json!({
                 "format": "ndjson", "fields": ["attributes", "events"],
-                "filters": serde_json::from_str::<serde_json::Value>(filters).unwrap()
+                "filters": serde_json::from_str::<serde_json::Value>(filters).unwrap(),
+                "sort_by": {"field": "duration_ns", "direction": "desc"}
             })))
             .with_body(response)
             .create();
@@ -253,6 +262,8 @@ mod tests {
             None,
             Some("attributes,events"),
             Some(filters),
+            Some("duration_ns"),
+            Some("desc"),
             None,
             None,
             None,
@@ -277,6 +288,8 @@ mod tests {
                 42,
                 Some("2026-01-01"),
                 Some("2026-01-02"),
+                None,
+                None,
                 None,
                 None,
                 Some(sample),
@@ -308,6 +321,8 @@ mod tests {
                 None,
                 fields,
                 filters,
+                None,
+                None,
                 sample,
                 None,
                 None,
@@ -426,6 +441,8 @@ mod tests {
             Some("2026-01-01"),
             None,
             Some(fields),
+            None,
+            None,
             None,
             None,
             None,

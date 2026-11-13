@@ -2,7 +2,7 @@ use std::io::Write;
 use std::path::Path;
 
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::auth::{resolve_api_base_url, resolve_api_key};
 use crate::utils::{api_get, open_db, resolve_relative_datetime};
@@ -19,16 +19,22 @@ struct ConsumerItem {
     id: i64,
     identifier: String,
     name: String,
-    group: Option<ConsumerGroupItem>,
+    #[serde(deserialize_with = "deserialize_group_name")]
+    group: Option<String>,
     attributes: serde_json::Value,
     created_at: String,
     last_request_at: String,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize)]
 struct ConsumerGroupItem {
-    id: i64,
     name: String,
+}
+
+fn deserialize_group_name<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<Option<String>, D::Error> {
+    Ok(Option::<ConsumerGroupItem>::deserialize(deserializer)?.map(|group| group.name))
 }
 
 fn fetch_consumers_page(
@@ -81,14 +87,13 @@ fn write_consumers_to_db(
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     )?;
     for consumer in consumers {
-        let group_name = consumer.group.as_ref().map(|g| g.name.as_str());
         let attributes = serde_json::to_string(&consumer.attributes)?;
         stmt.execute(duckdb::params![
             app_id,
             consumer.id,
             consumer.identifier,
             consumer.name,
-            group_name,
+            consumer.group,
             attributes,
             consumer.created_at,
             consumer.last_request_at,
@@ -252,7 +257,7 @@ mod tests {
         assert!(rows[0]["group"].is_null());
         assert_eq!(rows[0]["attributes"]["plan"], "pro");
         assert_eq!(rows[1]["identifier"], "user-2");
-        assert_eq!(rows[1]["group"]["name"], "Admins");
+        assert_eq!(rows[1]["group"], "Admins");
     }
 
     #[test]
