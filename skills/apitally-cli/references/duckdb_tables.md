@@ -66,6 +66,9 @@ CREATE TABLE metrics (
     period_end          TIMESTAMPTZ NOT NULL,
     env                 VARCHAR,
     consumer_id         BIGINT,
+    consumer_identifier VARCHAR,
+    consumer_name       VARCHAR,
+    consumer_group      VARCHAR,
     method              VARCHAR,
     path                VARCHAR,
     status_code         INTEGER,
@@ -101,14 +104,19 @@ CREATE TABLE request_logs (
     path                    VARCHAR,            -- parameterized route template, e.g. /users/{user_id}
     url                     VARCHAR NOT NULL,   -- full URL with actual path values, e.g. https://api.example.com/users/123
     consumer_id             INTEGER,            -- references consumers.consumer_id
+    consumer_identifier     VARCHAR,            -- same value as consumers.identifier
+    consumer_name           VARCHAR,            -- same value as consumers.name
+    consumer_group          VARCHAR,            -- same value as consumers."group"
     request_headers         STRUCT(name VARCHAR, value VARCHAR)[],
     request_size_bytes      BIGINT,
-    request_body_json       JSON,               -- max 50 KB, null if too large
+    request_body_json       JSON,               -- max 50 KB, null if too large or not valid JSON
+    request_body_text       VARCHAR,            -- body as text, including non-JSON bodies; max 50 KB, null if too large
     status_code             INTEGER,
     response_time_ms        INTEGER,
     response_headers        STRUCT(name VARCHAR, value VARCHAR)[],
     response_size_bytes     BIGINT,
-    response_body_json      JSON,               -- max 50 KB, null if too large
+    response_body_json      JSON,               -- max 50 KB, null if too large or not valid JSON
+    response_body_text      VARCHAR,            -- body as text, including non-JSON bodies; max 50 KB, null if too large
     client_ip               VARCHAR,
     client_country_iso_code VARCHAR,
     custom_attributes       JSON,               -- attributes set through the SDKs, JSON object with native values
@@ -172,7 +180,7 @@ Databases whose `spans` table has `request_uuid` require an explicit reset and r
 
 ## Relationships
 
-- `request_logs.consumer_id` references `consumers.consumer_id` (join on both `app_id` and `consumer_id`)
+- `request_logs.consumer_id` references `consumers.consumer_id` (join on both `app_id` and `consumer_id`). The join is only needed for consumer attributes; identifier, name and group are available as `request_logs` columns when selected in `--fields`
 - `metrics.consumer_id` references `consumers.consumer_id` (join on both `app_id` and `consumer_id`, only when metrics are grouped by consumer_id)
 - `endpoints.app_id` references `apps.app_id`
 - `metrics.app_id` references `apps.app_id`

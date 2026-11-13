@@ -20,14 +20,19 @@ pub(crate) fn ensure_request_logs_table(conn: &duckdb::Connection) -> Result<()>
             path VARCHAR,
             url VARCHAR NOT NULL,
             consumer_id INTEGER,
+            consumer_identifier VARCHAR,
+            consumer_name VARCHAR,
+            consumer_group VARCHAR,
             request_headers STRUCT(name VARCHAR, value VARCHAR)[],
             request_size_bytes BIGINT,
             request_body_json JSON,
+            request_body_text VARCHAR,
             status_code INTEGER,
             response_time_ms INTEGER,
             response_headers STRUCT(name VARCHAR, value VARCHAR)[],
             response_size_bytes BIGINT,
             response_body_json JSON,
+            response_body_text VARCHAR,
             client_ip VARCHAR,
             client_country_iso_code VARCHAR,
             custom_attributes JSON,
@@ -37,7 +42,12 @@ pub(crate) fn ensure_request_logs_table(conn: &duckdb::Connection) -> Result<()>
             sentry_event_id VARCHAR,
             UNIQUE (app_id, request_uuid)
         );
-        ALTER TABLE request_logs ADD COLUMN IF NOT EXISTS custom_attributes JSON;",
+        ALTER TABLE request_logs ADD COLUMN IF NOT EXISTS custom_attributes JSON;
+        ALTER TABLE request_logs ADD COLUMN IF NOT EXISTS consumer_identifier VARCHAR;
+        ALTER TABLE request_logs ADD COLUMN IF NOT EXISTS consumer_name VARCHAR;
+        ALTER TABLE request_logs ADD COLUMN IF NOT EXISTS consumer_group VARCHAR;
+        ALTER TABLE request_logs ADD COLUMN IF NOT EXISTS request_body_text VARCHAR;
+        ALTER TABLE request_logs ADD COLUMN IF NOT EXISTS response_body_text VARCHAR;",
     )?;
     Ok(())
 }
@@ -45,10 +55,12 @@ pub(crate) fn ensure_request_logs_table(conn: &duckdb::Connection) -> Result<()>
 #[allow(clippy::too_many_arguments)]
 pub fn run(
     app_id: i64,
-    since: &str,
+    since: Option<&str>,
     until: Option<&str>,
     fields: Option<&str>,
     filters: Option<&str>,
+    sort_by: Option<&str>,
+    sort_direction: Option<&str>,
     sample: Option<&str>,
     limit: Option<i64>,
     db: Option<&Path>,
@@ -59,16 +71,14 @@ pub fn run(
     let api_key = resolve_api_key(api_key)?;
     let api_base_url = resolve_api_base_url(api_base_url);
     let db = db.map(|p| open_db(p).map(|c| (p, c))).transpose()?;
-    let since = resolve_relative_datetime(since);
-    let until = until.map(resolve_relative_datetime);
 
     let format = if db.is_some() { "arrow" } else { "ndjson" };
-    let mut body = serde_json::json!({
-        "format": format,
-        "since": since,
-    });
-    if let Some(ref until) = until {
-        body["until"] = serde_json::json!(until);
+    let mut body = serde_json::json!({"format": format});
+    if let Some(since) = since {
+        body["since"] = resolve_relative_datetime(since).into();
+    }
+    if let Some(until) = until {
+        body["until"] = resolve_relative_datetime(until).into();
     }
     if let Some(fields) = fields {
         body["fields"] = parse_string_list(fields)
@@ -78,6 +88,12 @@ pub fn run(
         let filters_value: serde_json::Value = serde_json::from_str(filters)
             .map_err(|e| input_err(format!("invalid JSON for --filters: {e}")))?;
         body["filters"] = filters_value;
+    }
+    if let Some(sort_by) = sort_by {
+        body["sort_by"]["field"] = sort_by.into();
+    }
+    if let Some(sort_direction) = sort_direction {
+        body["sort_by"]["direction"] = sort_direction.into();
     }
     if let Some(sample) = sample {
         if let Ok(n) = sample.parse::<i64>() {
@@ -203,6 +219,11 @@ mod tests {
             Field::new("trace_id", DataType::Utf8, true),
             Field::new("request_headers", headers_list_type.clone(), true),
             Field::new("custom_attributes", DataType::Utf8, false),
+            Field::new("consumer_identifier", DataType::Utf8, true),
+            Field::new("consumer_name", DataType::Utf8, true),
+            Field::new("consumer_group", DataType::Utf8, true),
+            Field::new("request_body_text", DataType::Utf8, true),
+            Field::new("response_body_text", DataType::Utf8, true),
         ]));
         let headers_struct = StructArray::from(vec![
             (
@@ -246,6 +267,11 @@ mod tests {
                     r#"{"tenant.id":"acme","cart.item_count":3}"#;
                     ROW_COUNT
                 ])),
+                Arc::new(StringArray::from(vec!["bob@example.com"; ROW_COUNT])),
+                Arc::new(StringArray::from(vec!["Bob"; ROW_COUNT])),
+                Arc::new(StringArray::from(vec!["Admins"; ROW_COUNT])),
+                Arc::new(StringArray::from(vec!["a=1"; ROW_COUNT])),
+                Arc::new(StringArray::from(vec!["OK"; ROW_COUNT])),
             ],
         )
         .unwrap();
@@ -277,10 +303,12 @@ mod tests {
         let mut buf = Vec::new();
         run(
             1,
-            "2025-01-01",
+            Some("2025-01-01"),
             Some("2025-01-02"),
             Some(r#"["method","url","status_code"]"#),
             Some(r#"{"status_code":200}"#),
+            None,
+            None,
             None,
             Some(10),
             None,
@@ -316,7 +344,9 @@ mod tests {
 
             run(
                 1,
-                "2025-01-01",
+                Some("2025-01-01"),
+                None,
+                None,
                 None,
                 None,
                 None,
@@ -333,6 +363,40 @@ mod tests {
     }
 
     #[test]
+    fn test_run_ndjson_with_sort_and_without_since() {
+        let filters = r#"[{"field":"request_uuid","op":"eq","value":"abc"}]"#;
+        let mut server = mockito::Server::new();
+        let mock = server
+            .mock("POST", "/v1/apps/1/request-logs")
+            .match_body(mockito::Matcher::Json(serde_json::json!({
+                "format": "ndjson",
+                "filters": [{"field": "request_uuid", "op": "eq", "value": "abc"}],
+                "sort_by": {"field": "response_time_ms", "direction": "desc"},
+            })))
+            .with_status(200)
+            .with_body(sample_request_logs_ndjson())
+            .create();
+
+        run(
+            1,
+            None,
+            None,
+            None,
+            Some(filters),
+            Some("response_time_ms"),
+            Some("desc"),
+            None,
+            None,
+            None,
+            Some("test-key"),
+            Some(&server.url()),
+            &mut Vec::new(),
+        )
+        .unwrap();
+        mock.assert();
+    }
+
+    #[test]
     fn test_run_with_db() {
         let mut server = mockito::Server::new();
         let mock = mock_request_logs_endpoint(&mut server, 1, sample_request_logs_arrow_ipc());
@@ -340,7 +404,9 @@ mod tests {
 
         run(
             1,
-            "2025-01-01",
+            Some("2025-01-01"),
+            None,
+            None,
             None,
             None,
             None,
@@ -365,6 +431,9 @@ mod tests {
                     AND trace_id = '0123456789abcdef0123456789abcdef'
                     AND (custom_attributes->>'$.\"tenant.id\"') = 'acme'
                     AND (custom_attributes->>'$.\"cart.item_count\"')::BIGINT = 3
+                    AND consumer_identifier = 'bob@example.com' AND consumer_name = 'Bob'
+                    AND consumer_group = 'Admins'
+                    AND request_body_text = 'a=1' AND response_body_text = 'OK'
                  ) FROM request_logs",
                 [],
                 |row| Ok((row.get(0)?, row.get(1)?)),

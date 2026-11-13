@@ -18,6 +18,8 @@ struct RequestDetailsResponse {
     path: Option<String>,
     url: String,
     consumer_id: Option<i64>,
+    #[serde(rename(deserialize = "consumer"))]
+    consumer_identifier: Option<String>,
     request_headers: Vec<(String, String)>,
     request_size_bytes: i64,
     request_body_json: Option<String>,
@@ -101,12 +103,12 @@ fn write_request_details_to_db(
 
     conn.execute(
         "INSERT OR REPLACE INTO request_logs (
-            app_id, timestamp, request_uuid, env, method, path, url, consumer_id,
+            app_id, timestamp, request_uuid, env, method, path, url, consumer_id, consumer_identifier,
             request_headers, request_size_bytes, request_body_json,
             status_code, response_time_ms, response_headers, response_size_bytes, response_body_json,
             client_ip, client_country_iso_code, custom_attributes,
             exception_type, exception_message, exception_stacktrace, sentry_event_id, trace_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         duckdb::params![
             app_id,
             &data.timestamp,
@@ -116,6 +118,7 @@ fn write_request_details_to_db(
             &data.path,
             &data.url,
             data.consumer_id,
+            &data.consumer_identifier,
             &request_headers,
             data.request_size_bytes,
             &data.request_body_json,
@@ -336,6 +339,7 @@ mod tests {
 
         let output: serde_json::Value = serde_json::from_slice(&buf).unwrap();
         assert_eq!(output["method"], "GET");
+        assert_eq!(output["consumer_identifier"], "user-1");
         assert_eq!(output["status_code"], 200);
         assert_eq!(output["trace_id"], "0000000000000000aaaaaaaaaaaaaaaa");
         assert_eq!(output["custom_attributes"]["tenant.id"], "acme");
@@ -380,15 +384,17 @@ mod tests {
 
         let conn = open_db(&db_path).unwrap();
 
-        let (method, url, consumer_id, trace_id, tenant_id): (
+        let (method, url, consumer_id, consumer_identifier, trace_id, tenant_id): (
             String,
             String,
             Option<i64>,
             Option<String>,
+            Option<String>,
             String,
         ) = conn
             .query_row(
-                "SELECT method, url, consumer_id, trace_id, custom_attributes->>'$.\"tenant.id\"' \
+                "SELECT method, url, consumer_id, consumer_identifier, trace_id, \
+                 custom_attributes->>'$.\"tenant.id\"' \
                  FROM request_logs WHERE app_id = 1 AND request_uuid = 'abc-123'",
                 [],
                 |row| {
@@ -398,6 +404,7 @@ mod tests {
                         row.get(2)?,
                         row.get(3)?,
                         row.get(4)?,
+                        row.get(5)?,
                     ))
                 },
             )
@@ -409,6 +416,7 @@ mod tests {
             Some("0000000000000000aaaaaaaaaaaaaaaa")
         );
         assert_eq!(consumer_id, Some(42));
+        assert_eq!(consumer_identifier.as_deref(), Some("user-1"));
         assert_eq!(tenant_id, "acme");
 
         let log_message: String = conn
