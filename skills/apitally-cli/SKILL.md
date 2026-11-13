@@ -99,7 +99,7 @@ All commands are run via `npx @apitally/cli <command>`. For full details, see [r
      Newest first: `--sort-direction desc --limit 20`
      Slowest first: `--sort-by response_time_ms --sort-direction desc --limit 20`
 
-     Without `--sort-direction desc`, `--limit` returns the oldest rows in the time range. `--fields` replaces the defaults.
+     Without sort flags, `--limit` returns the oldest rows in the time range. `--fields` replaces the defaults.
 
    - **Trace spans** - for slow database or external calls, instrumentation scopes, span errors, or events. Use `traces` to discover matching spans, then fetch discovered trace IDs without the discovery filters or sampling to inspect sibling spans. See the trace patterns below and the [full field/filter contract](references/commands.md#traces).
 

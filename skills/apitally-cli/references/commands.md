@@ -20,7 +20,7 @@ Datetime flags (e.g. `--since`, `--until`, `--requests-since`) accept ISO 8601 s
 
 `in`/`not_in` take an array. Omit `value` for `exists`, `not_exists`, `is_null`, `is_not_null`. `like`/`ilike` use `%` and `_` wildcards; `contains` is case-insensitive.
 
-**Negated operators:** `neq`, `not_in`, `not_like`, `not_ilike`, `not_contains` and `not_exists` match every row the positive operator doesn't, including rows where the field or key is missing or null. Add `is_not_null` on the same field, or `exists` on the same key, to exclude those rows:
+**Negated operators:** `neq`, `not_in`, `not_like`, `not_ilike` and `not_contains` match every row the positive operator doesn't, including rows where the field or key is missing or null. Add `is_not_null` on the same field, or `exists` on the same key, to exclude those rows:
 
 ```json
 [{"field":"consumer_identifier","op":"neq","value":"bob@example.com"},{"field":"consumer_identifier","op":"is_not_null"}]

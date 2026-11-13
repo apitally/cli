@@ -264,10 +264,10 @@ enum Command {
         /// is_not_null. like/ilike use % and _ wildcards; contains is
         /// case-insensitive.
         ///
-        /// neq, not_exists and the other not_ operators match every row the positive
-        /// operator doesn't, including rows where the field or key is missing or
-        /// null. Add is_not_null on the same field, or exists on the same key, to
-        /// exclude those rows.
+        /// neq, not_in, not_like, not_ilike and not_contains match every row the
+        /// positive operator doesn't, including rows where the field or key is
+        /// missing or null. Add is_not_null on the same field, or exists on the same
+        /// key, to exclude those rows.
         ///
         /// For custom_attributes and JSON bodies, eq, neq, in and not_in also
         /// compare values as text, so "42" matches 42. Other operators only match
@@ -396,7 +396,7 @@ enum Command {
         /// is_not_null. like/ilike use % and _ wildcards; contains is
         /// case-insensitive.
         ///
-        /// neq, not_exists and the other not_ operators match every span the
+        /// neq, not_in, not_like, not_ilike and not_contains match every span the
         /// positive operator doesn't, including spans where the field or key is
         /// missing or null. Add is_not_null on the same field, or exists on the same
         /// key, to exclude those spans.
