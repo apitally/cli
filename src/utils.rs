@@ -122,47 +122,80 @@ pub fn parse_string_list(s: &str) -> Result<serde_json::Value> {
     Ok(serde_json::json!(items))
 }
 
+const MAX_RETRY_WAIT: Duration = Duration::from_secs(60);
+const MAX_RETRIES: u32 = 2;
+
 pub fn api_get(url: &str, api_key: &str, query: &[(&str, &str)]) -> Result<Response<Body>> {
-    let mut req = ureq::get(url)
-        .header("Api-Key", api_key)
-        .config()
-        .http_status_as_error(false)
-        .timeout_connect(Some(Duration::from_secs(5)))
-        .timeout_recv_response(Some(Duration::from_secs(15)))
-        .build();
-    for (key, value) in query {
-        req = req.query(key, value);
-    }
-    let mut response = req.call().map_err(|e| api_err(e.to_string()))?;
-    check_response(&mut response)?;
-    Ok(response)
+    send_with_retry(|| {
+        let mut req = ureq::get(url)
+            .header("Api-Key", api_key)
+            .config()
+            .http_status_as_error(false)
+            .timeout_connect(Some(Duration::from_secs(5)))
+            .timeout_recv_response(Some(Duration::from_secs(15)))
+            .build();
+        for (key, value) in query {
+            req = req.query(key, value);
+        }
+        req.call().map_err(|e| api_err(e.to_string()))
+    })
 }
 
 pub fn api_post(url: &str, api_key: &str, body: &serde_json::Value) -> Result<Response<Body>> {
-    let mut response = ureq::post(url)
-        .header("Api-Key", api_key)
-        .config()
-        .http_status_as_error(false)
-        .timeout_connect(Some(Duration::from_secs(5)))
-        .timeout_recv_response(Some(Duration::from_secs(15)))
-        .build()
-        .send_json(body)
-        .map_err(|e| api_err(e.to_string()))?;
-    check_response(&mut response)?;
-    Ok(response)
+    send_with_retry(|| {
+        ureq::post(url)
+            .header("Api-Key", api_key)
+            .config()
+            .http_status_as_error(false)
+            .timeout_connect(Some(Duration::from_secs(5)))
+            .timeout_recv_response(Some(Duration::from_secs(15)))
+            .build()
+            .send_json(body)
+            .map_err(|e| api_err(e.to_string()))
+    })
 }
 
 pub fn api_post_without_key(url: &str, body: &serde_json::Value) -> Result<Response<Body>> {
-    let mut response = ureq::post(url)
-        .config()
-        .http_status_as_error(false)
-        .timeout_connect(Some(Duration::from_secs(5)))
-        .timeout_recv_response(Some(Duration::from_secs(15)))
-        .build()
-        .send_json(body)
-        .map_err(|e| api_err(e.to_string()))?;
-    check_response(&mut response)?;
-    Ok(response)
+    send_with_retry(|| {
+        ureq::post(url)
+            .config()
+            .http_status_as_error(false)
+            .timeout_connect(Some(Duration::from_secs(5)))
+            .timeout_recv_response(Some(Duration::from_secs(15)))
+            .build()
+            .send_json(body)
+            .map_err(|e| api_err(e.to_string()))
+    })
+}
+
+fn retry_after_delay(response: &Response<Body>) -> Duration {
+    let secs = response
+        .headers()
+        .get("Retry-After")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(1);
+    Duration::from_secs(secs)
+}
+
+fn send_with_retry(mut send: impl FnMut() -> Result<Response<Body>>) -> Result<Response<Body>> {
+    let mut waited = Duration::ZERO;
+    let mut retries = 0;
+    loop {
+        let mut response = send()?;
+        if response.status().as_u16() == 429 {
+            let delay = retry_after_delay(&response);
+            if retries < MAX_RETRIES && waited + delay <= MAX_RETRY_WAIT {
+                eprintln!("Rate limited, retrying in {}s...", delay.as_secs());
+                std::thread::sleep(delay);
+                waited += delay;
+                retries += 1;
+                continue;
+            }
+        }
+        check_response(&mut response)?;
+        return Ok(response);
+    }
 }
 
 fn check_response(response: &mut Response<Body>) -> Result<()> {
