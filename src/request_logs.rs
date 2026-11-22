@@ -316,6 +316,12 @@ mod tests {
     #[test]
     fn test_run_ndjson() {
         let mut server = mockito::Server::new();
+        let rate_limited = server
+            .mock("POST", "/v1/apps/1/request-logs")
+            .with_status(429)
+            .with_header("Retry-After", "0")
+            .expect(1)
+            .create();
         let mock = mock_request_logs_endpoint(&mut server, 1, sample_request_logs_ndjson());
 
         let mut buf = Vec::new();
@@ -335,6 +341,7 @@ mod tests {
             &mut buf,
         )
         .unwrap();
+        rate_limited.assert();
         mock.assert();
 
         let rows = parse_ndjson(&buf);
