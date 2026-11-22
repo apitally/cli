@@ -123,7 +123,7 @@ pub fn parse_string_list(s: &str) -> Result<serde_json::Value> {
 }
 
 const MAX_RETRY_WAIT: Duration = Duration::from_secs(60);
-const MAX_RETRIES: u32 = 5;
+const MAX_RETRIES: u32 = 2;
 
 pub fn api_get(url: &str, api_key: &str, query: &[(&str, &str)]) -> Result<Response<Body>> {
     send_with_retry(|| {
@@ -186,9 +186,8 @@ fn send_with_retry(mut send: impl FnMut() -> Result<Response<Body>>) -> Result<R
         if response.status().as_u16() == 429 {
             let delay = retry_after_delay(&response);
             if retries < MAX_RETRIES && waited + delay <= MAX_RETRY_WAIT {
-                if !delay.is_zero() {
-                    std::thread::sleep(delay);
-                }
+                eprintln!("Rate limited, retrying in {}s...", delay.as_secs());
+                std::thread::sleep(delay);
                 waited += delay;
                 retries += 1;
                 continue;
