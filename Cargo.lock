@@ -673,8 +673,8 @@ dependencies = [
 
 [[package]]
 name = "duckdb"
-version = "1.20000.2"
-source = "git+https://github.com/duckdb/duckdb-rs?tag=v1.20000.2#a8bc7f2de45d8dbaf4b9853c85481722eb4fd699"
+version = "1.20001.0"
+source = "git+https://github.com/duckdb/duckdb-rs?tag=v1.20001.0#e3b2d244c90e9074db5e4af635bad58ab469b672"
 dependencies = [
  "arrow",
  "cast",
@@ -1259,8 +1259,8 @@ checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
 
 [[package]]
 name = "libduckdb-sys"
-version = "1.20000.2"
-source = "git+https://github.com/duckdb/duckdb-rs?tag=v1.20000.2#a8bc7f2de45d8dbaf4b9853c85481722eb4fd699"
+version = "1.20001.0"
+source = "git+https://github.com/duckdb/duckdb-rs?tag=v1.20001.0#e3b2d244c90e9074db5e4af635bad58ab469b672"
 dependencies = [
  "cc",
  "cmake",
